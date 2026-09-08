@@ -1,0 +1,780 @@
+// Paper Trading Platform - Database Schema
+// Run: npx prisma migrate dev --name init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Segment {
+  EQUITY
+  FUTURES
+  OPTIONS
+}
+
+enum ProductType {
+  INTRADAY // MIS
+  DELIVERY // CNC
+  NORMAL // NRML (for F&O carry-forward)
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  SL
+  SL_M
+}
+
+enum TransactionType {
+  BUY
+  SELL
+}
+
+enum OrderStatus {
+  PENDING
+  OPEN
+  COMPLETE
+  REJECTED
+  CANCELLED
+}
+
+enum OptionType {
+  CE
+  PE
+}
+
+enum ContestStatus {
+  UPCOMING
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum ContestDurationType {
+  WEEKLY
+  MONTHLY
+  HALF_YEARLY
+  YEARLY
+  CUSTOM
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum KycStatus {
+  NOT_STARTED
+  DOCUMENTS_PENDING // some docs uploaded / PAN verified, not yet submitted
+  SUBMITTED // submitted for admin review
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum KycDocumentType {
+  PAN_CARD
+  AADHAAR_FRONT
+  AADHAAR_BACK
+  ADDRESS_PROOF
+  BANK_PROOF
+  PHOTO
+}
+
+enum KycDocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BankVerificationStatus {
+  NOT_VERIFIED
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum OtpPurpose {
+  PHONE_VERIFICATION
+  LIVE_ORDER_2FA // per-order confirmation for live trading - see docs/LIVE_TRADING.md
+}
+
+// Lifecycle of a user's real-money trading account - see docs/LIVE_TRADING.md.
+// A user starts NOT_ELIGIBLE; a released PROP_TRADING prize award (or an
+// admin grant) moves them to ELIGIBLE; linking a broker + opting in moves
+// them to ENABLED, at which point the trading terminal allows a "Live"
+// account mode alongside Paper and Contest. SUSPENDED is an admin/risk
+// override that always wins over ENABLED.
+enum LiveTradingStatus {
+  NOT_ELIGIBLE
+  ELIGIBLE
+  ENABLED
+  SUSPENDED
+}
+
+// Broker-reported lifecycle of a real order placed via ILiveTradingAdapter.
+// Deliberately separate from OrderStatus (used by the paper Order model) -
+// live orders track a real brokerOrderId and real fill state reported by
+// the broker, not our own virtual matching engine.
+enum LiveOrderStatus {
+  PENDING_SUBMISSION // created locally, not yet sent to the broker
+  SUBMITTED // sent to the broker, awaiting acknowledgement
+  OPEN // broker accepted, resting (LIMIT/SL)
+  PARTIALLY_FILLED
+  COMPLETE
+  REJECTED
+  CANCELLED
+}
+
+enum PayoutPreference {
+  CASH_WITHDRAWAL // pay net winnings out to a verified bank account
+  PROP_TRADING // credit net winnings into the user's personal Wallet as trading capital
+}
+
+// Lifecycle of a single contest prize award, from computation to payout.
+// PENDING_KYC / PENDING_BANK describe *why* a READY-eligible award isn't
+// payable yet; PrizeService recomputes these right before every release
+// attempt so a user who completes KYC/adds a bank account after awards were
+// computed doesn't stay stuck. See docs/PRIZES_AND_PAYOUTS.md.
+enum PrizePayoutStatus {
+  PENDING_KYC // Kyc.status is not VERIFIED yet
+  PENDING_BANK // CASH_WITHDRAWAL preference but no VERIFIED primary bank account
+  READY // eligible - admin can release
+  PROCESSING // payout provider call in flight
+  PAID // cash payout confirmed by provider
+  CREDITED_TO_WALLET // prop-trading credit applied to Wallet.cashBalance
+  FAILED // provider call failed - can be retried
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  name          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  wallet             Wallet?
+  orders             Order[]
+  positions          Position[]
+  holdings           Holding[]
+  watchlists         Watchlist[]
+  brokerLinks        BrokerLink[]
+  contestParticipations ContestParticipant[]
+  profile            UserProfile?
+  kyc                Kyc?
+  bankAccounts       BankAccount[]
+  otpVerifications   OtpVerification[]
+  prizeAwards        ContestPrizeAward[]
+  liveTradingAccount LiveTradingAccount?
+  liveOrders         LiveOrder[]
+}
+
+// Admins are a deliberately separate identity from User - a different table,
+// different login endpoint, different JWT secret (ADMIN_JWT_SECRET). A
+// regular user's token is never accepted by admin-only routes and vice
+// versa. Admins are never self-registered through the public API; they're
+// created via `npm run seed:admin` (see docs/ADMIN.md) or by an existing
+// admin, keeping "who can host a contest" a deliberate operational decision
+// rather than anything a random signup can grant itself.
+model Admin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("ADMIN") // room to grow into e.g. SUPER_ADMIN later
+  createdAt    DateTime @default(now())
+
+  contestsCreated Contest[]
+  kycReviews      Kyc[]
+  prizeReleases   ContestPrizeAward[]
+  liveTradingSuspensions LiveTradingAccount[]
+}
+
+// One row per user holding linked broker credentials. Originally added only
+// for a future per-user live market-data mode; now doubles as the credential
+// source for real order placement (see LiveTradingAccount/LiveOrder below,
+// docs/LIVE_TRADING.md) - orders for a LIVE account execute on *this* user's
+// own broker account via their own token, never a shared platform credential.
+model BrokerLink {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  provider     String   // ZERODHA | UPSTOX | ANGELONE | ICICIDIRECT | MOCK (demo/test only - see docs/LIVE_TRADING.md)
+  nickname     String?  // user-facing label when they have more than one link, e.g. "My Zerodha"
+  accessToken  String?
+  refreshToken String?
+  meta         Json?
+  createdAt    DateTime @default(now())
+
+  liveTradingAccounts LiveTradingAccount[]
+  liveOrders          LiveOrder[]
+
+  @@unique([userId, provider])
+}
+
+model Wallet {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id])
+  cashBalance    Decimal  @default(1000000) @db.Decimal(18, 2)
+  marginUsed     Decimal  @default(0) @db.Decimal(18, 2)
+  realizedPnL    Decimal  @default(0) @db.Decimal(18, 2)
+  updatedAt      DateTime @updatedAt
+}
+
+// Cached instrument master synced from the active broker's instrument dump.
+model Instrument {
+  id               String   @id @default(uuid())
+  tradingSymbol    String
+  exchange         String   // NSE | BSE | NFO | MCX
+  segment          Segment
+  instrumentToken  String   @unique
+  name             String?
+  lotSize          Int      @default(1)
+  tickSize         Decimal  @default(0.05) @db.Decimal(10, 4)
+  expiry           DateTime?
+  strike           Decimal? @db.Decimal(18, 2)
+  optionType       OptionType?
+  lastPrice        Decimal? @db.Decimal(18, 2)
+  updatedAt        DateTime @updatedAt
+
+  orders           Order[]
+  positions        Position[]
+  holdings         Holding[]
+  contestPositions ContestPosition[]
+  contestHoldings  ContestHolding[]
+
+  @@index([tradingSymbol])
+  @@index([segment])
+}
+
+// A single order can either belong to the user's personal paper trading
+// account (contestParticipantId = null) or to one specific contest entry
+// (contestParticipantId set) - never both. See docs/CONTESTS.md.
+model Order {
+  id                   String              @id @default(uuid())
+  userId               String
+  user                 User                @relation(fields: [userId], references: [id])
+  contestParticipantId String?
+  contestParticipant   ContestParticipant? @relation(fields: [contestParticipantId], references: [id])
+  instrumentId         String
+  instrument           Instrument          @relation(fields: [instrumentId], references: [id])
+  transactionType      TransactionType
+  orderType            OrderType
+  productType          ProductType
+  quantity             Int
+  price                Decimal?            @db.Decimal(18, 2) // for LIMIT / SL
+  triggerPrice         Decimal?            @db.Decimal(18, 2) // for SL / SL-M
+  filledPrice          Decimal?            @db.Decimal(18, 2)
+  status               OrderStatus         @default(PENDING)
+  targetPrice          Decimal?            @db.Decimal(18, 2)
+  stopLossPrice        Decimal?            @db.Decimal(18, 2)
+  rejectionReason      String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([userId, status])
+  @@index([contestParticipantId, status])
+}
+
+// Intraday / open positions (MIS + NRML F&O)
+model Position {
+  id             String      @id @default(uuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+  instrumentId   String
+  instrument     Instrument  @relation(fields: [instrumentId], references: [id])
+  productType    ProductType
+  quantity       Int         // net qty, negative = short
+  avgPrice       Decimal     @db.Decimal(18, 2)
+  realizedPnL    Decimal     @default(0) @db.Decimal(18, 2)
+  marginBlocked  Decimal     @default(0) @db.Decimal(18, 2)
+  openedAt       DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([userId, instrumentId, productType])
+}
+
+// Delivery (CNC) holdings that persist beyond a single day
+model Holding {
+  id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id])
+  instrumentId  String
+  instrument    Instrument @relation(fields: [instrumentId], references: [id])
+  quantity      Int
+  avgPrice      Decimal    @db.Decimal(18, 2)
+  updatedAt     DateTime   @updatedAt
+
+  @@unique([userId, instrumentId])
+}
+
+model Watchlist {
+  id     String   @id @default(uuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id])
+  name   String   @default("My Watchlist")
+  symbols Json    // array of instrumentToken strings
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Contests: institutions/admins host a time-boxed trading contest. Each
+// participant gets their own isolated virtual wallet + positions + holdings
+// (ContestParticipant / ContestPosition / ContestHolding below), completely
+// separate from the user's personal paper trading account (Wallet / Position
+// / Holding above). Periodic NAV snapshots (ContestPortfolioSnapshot) let the
+// leaderboard rank participants on both return and risk. See
+// docs/CONTESTS.md for the full scoring model.
+// ---------------------------------------------------------------------------
+
+model Contest {
+  id                  String              @id @default(uuid())
+  name                String
+  description         String?
+  durationType        ContestDurationType @default(CUSTOM)
+  startDate           DateTime
+  // For WEEKLY/MONTHLY/HALF_YEARLY/YEARLY contests this is computed from
+  // startDate + durationType at creation time, with the time-of-day pinned
+  // to market close (see config/env.ts CONTEST_MARKET_CLOSE_TIME) so
+  // "last day" always ends at close, not at some arbitrary hour. See
+  // routes/adminContests.routes.ts.
+  endDate             DateTime
+  startingVirtualCash Decimal             @default(100000) @db.Decimal(18, 2)
+  maxParticipants     Int?
+  status              ContestStatus       @default(UPCOMING)
+  // Composite leaderboard score = returnWeight * zReturn - riskWeight * zRisk
+  // (both weights should sum to ~1 but aren't enforced to; see LeaderboardService).
+  returnWeight        Float               @default(0.6)
+  riskWeight          Float               @default(0.4)
+  createdByAdminId    String
+  createdByAdmin      Admin               @relation(fields: [createdByAdminId], references: [id])
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  // Set once ContestEndService has liquidated every participant's open
+  // positions/holdings at contest close - guards against the scheduler
+  // double-squaring-off the same contest on a later cron tick.
+  squaredOffAt DateTime?
+
+  // Total cash prize pool for this contest (0 = no prizes, a purely
+  // leaderboard-for-bragging-rights contest). Split across winning ranks by
+  // ContestPrizeSlab. See docs/PRIZES_AND_PAYOUTS.md.
+  totalPrizePool Decimal @default(0) @db.Decimal(18, 2)
+  // Set once PrizeService.computeAwards has turned the final leaderboard +
+  // prize slabs into ContestPrizeAward rows - guards against recomputing
+  // (and thus double-awarding) amounts once payouts may already be in
+  // flight. Admins can still force a recompute of *eligibility* per award
+  // (KYC/bank status) without touching this or the amounts.
+  prizesComputedAt DateTime?
+
+  participants ContestParticipant[]
+  prizeSlabs   ContestPrizeSlab[]
+  prizeAwards  ContestPrizeAward[]
+
+  @@index([status])
+}
+
+model ContestParticipant {
+  id          String   @id @default(uuid())
+  contestId   String
+  contest     Contest  @relation(fields: [contestId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  cashBalance Decimal  @db.Decimal(18, 2)
+  marginUsed  Decimal  @default(0) @db.Decimal(18, 2)
+  realizedPnL Decimal  @default(0) @db.Decimal(18, 2)
+  joinedAt    DateTime @default(now())
+
+  // Cached results of the last leaderboard computation (LeaderboardService),
+  // read directly by the UI so the leaderboard endpoint doesn't have to
+  // recompute the whole contest's ranking on every request.
+  rank         Int?
+  returnPct    Float?
+  riskScore    Float? // annualized volatility of daily NAV returns, in %
+  maxDrawdownPct Float?
+  compositeScore Float?
+  lastScoredAt DateTime?
+
+  orders    Order[]
+  positions ContestPosition[]
+  holdings  ContestHolding[]
+  snapshots ContestPortfolioSnapshot[]
+  prizeAwards ContestPrizeAward[]
+
+  @@unique([contestId, userId])
+  @@index([contestId, compositeScore])
+}
+
+model ContestPosition {
+  id                    String              @id @default(uuid())
+  contestParticipantId  String
+  contestParticipant    ContestParticipant  @relation(fields: [contestParticipantId], references: [id])
+  instrumentId          String
+  instrument            Instrument          @relation(fields: [instrumentId], references: [id])
+  productType           ProductType
+  quantity              Int
+  avgPrice              Decimal             @db.Decimal(18, 2)
+  realizedPnL           Decimal             @default(0) @db.Decimal(18, 2)
+  marginBlocked         Decimal             @default(0) @db.Decimal(18, 2)
+  openedAt              DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@unique([contestParticipantId, instrumentId, productType])
+}
+
+model ContestHolding {
+  id                   String             @id @default(uuid())
+  contestParticipantId String
+  contestParticipant   ContestParticipant @relation(fields: [contestParticipantId], references: [id])
+  instrumentId         String
+  instrument           Instrument         @relation(fields: [instrumentId], references: [id])
+  quantity             Int
+  avgPrice             Decimal            @db.Decimal(18, 2)
+  updatedAt            DateTime           @updatedAt
+
+  @@unique([contestParticipantId, instrumentId])
+}
+
+// Periodic (see ContestSnapshotScheduler) net-asset-value samples per
+// participant - cash + mark-to-market value of open positions/holdings.
+// This time series is what LeaderboardService derives return% and
+// volatility/risk from.
+model ContestPortfolioSnapshot {
+  id                   String             @id @default(uuid())
+  contestParticipantId String
+  contestParticipant   ContestParticipant @relation(fields: [contestParticipantId], references: [id])
+  nav                  Decimal            @db.Decimal(18, 2)
+  timestamp            DateTime           @default(now())
+
+  @@index([contestParticipantId, timestamp])
+}
+
+// ---------------------------------------------------------------------------
+// Contest prize pool & payouts. A contest with totalPrizePool > 0 defines one
+// or more ContestPrizeSlab rows (e.g. rank 1-1 = 50%, rank 2-3 = 30% split
+// evenly, rank 4-10 = 20% split evenly). Once the contest ends and the final
+// leaderboard is locked, PrizeService.computeAwards turns slabs + ranks into
+// one ContestPrizeAward per winner (gross amount, flat-rate TDS deduction,
+// net payable), gated on that user's KYC + bank verification status. An
+// admin reviews and releases each award from /admin/contests/:id/prizes -
+// see docs/PRIZES_AND_PAYOUTS.md for the full flow and regulatory caveats.
+// ---------------------------------------------------------------------------
+
+// One slab = "ranks rankFrom..rankTo split `percentage`% of the pool evenly
+// between them". Slabs need not cover every participant - unlisted ranks get
+// no prize. Validated (in PrizeService) to not overlap and to sum to <= 100%.
+model ContestPrizeSlab {
+  id         String  @id @default(uuid())
+  contestId  String
+  contest    Contest @relation(fields: [contestId], references: [id])
+  rankFrom   Int
+  rankTo     Int
+  percentage Float // % of Contest.totalPrizePool allocated to this slab
+
+  @@index([contestId])
+}
+
+// One row per winning participant once PrizeService.computeAwards has run.
+// grossAmount / tdsAmount / netAmount and payoutPreference are all snapshots
+// taken at computation time - later profile changes never retroactively
+// alter an already-computed award.
+model ContestPrizeAward {
+  id                    String              @id @default(uuid())
+  contestId             String
+  contest               Contest             @relation(fields: [contestId], references: [id])
+  contestParticipantId  String
+  contestParticipant    ContestParticipant  @relation(fields: [contestParticipantId], references: [id])
+  userId                String
+  user                  User                @relation(fields: [userId], references: [id])
+
+  rank          Int
+  grossAmount   Decimal @db.Decimal(18, 2)
+  // Flat-rate TDS under Section 194BA (Income Tax Act 1961) / Section 393(3)
+  // (Income Tax Act 2025, effective 1 Apr 2026) on "net winnings from online
+  // games" - currently 30% with no minimum threshold. See
+  // docs/PRIZES_AND_PAYOUTS.md for citations and caveats.
+  tdsRatePct    Float
+  tdsAmount     Decimal @db.Decimal(18, 2)
+  netAmount     Decimal @db.Decimal(18, 2)
+
+  payoutPreference PayoutPreference   // snapshot of UserProfile.payoutPreference at computation time
+  payoutStatus     PrizePayoutStatus  @default(PENDING_KYC)
+  blockedReason    String?            // human-readable reason payoutStatus isn't READY yet
+
+  // Snapshot of the bank account actually paid out to (CASH_WITHDRAWAL only) -
+  // stored here rather than a hard FK so this stays a stable audit record even
+  // if the user later edits/removes the BankAccount row.
+  payoutBankAccountId String?
+  payoutAccountLast4  String?
+  payoutIfsc          String?
+
+  payoutProvider String? // CASHFREE | MOCK
+  payoutRaw      Json?   // raw provider response, kept for audit
+
+  releasedByAdminId String?
+  releasedByAdmin   Admin?   @relation(fields: [releasedByAdminId], references: [id])
+  paidAt            DateTime?
+
+  // Set when a successfully-paid PROP_TRADING award additionally grants the
+  // winner Live Trading eligibility (LiveTradingAccountService.grantEligibility)
+  // - see docs/LIVE_TRADING.md. No broker API can deposit real cash into a
+  // user's account on our behalf, so the net amount above is always paid out
+  // to the user's bank exactly like CASH_WITHDRAWAL; PROP_TRADING's distinct
+  // effect is this eligibility unlock, not a different money-movement path.
+  unlockedLiveTradingEligibility Boolean @default(false)
+  liveTradingEligibilityGrantedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contestId, userId])
+  @@index([contestId, payoutStatus])
+}
+
+// ---------------------------------------------------------------------------
+// Live (real-money) trading. Deliberately separate from every paper-trading
+// model above (Wallet/Position/Holding/Order) - a LIVE account's orders
+// execute on the user's own linked broker account via ILiveTradingAdapter,
+// using that user's own BrokerLink credentials, never a shared platform
+// credential and never platform-held funds (see the "self-custody" model in
+// docs/LIVE_TRADING.md). SEBI's Feb 2025 algorithmic-trading circular and the
+// Stock Brokers Regulations, 2026 inform the shape of these tables (audit
+// trail, 2FA, record retention) - see docs/LIVE_TRADING.md for citations and
+// the real compliance steps this schema does not by itself satisfy.
+// ---------------------------------------------------------------------------
+
+model LiveTradingAccount {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  status LiveTradingStatus @default(NOT_ELIGIBLE)
+
+  // Set the first time eligibility is granted (a paid PROP_TRADING award, or
+  // an admin grant) - independent of whether the user has acted on it yet.
+  eligibleSince DateTime?
+  // Set when the user actually links a broker and flips the account to
+  // ENABLED - this, not eligibleSince, is what the trading terminal checks
+  // before offering a "Live" account mode (see Q&A: explicit opt-in, never automatic).
+  enabledAt DateTime?
+
+  brokerLinkId String?
+  brokerLink   BrokerLink? @relation(fields: [brokerLinkId], references: [id])
+
+  // Basic pre-trade risk controls, editable by the user (within admin-set
+  // caps) from the Live Trading setup page - a real deployment would tune
+  // these per user risk profile / SEBI suitability requirements.
+  dailyOrderLimit Int     @default(50)
+  maxOrderValue   Decimal @default(50000) @db.Decimal(18, 2)
+
+  // Instant "stop all new live orders" switch the user (or an admin) can
+  // flip without fully disabling/unlinking the account - checked first on
+  // every order placement attempt.
+  killSwitchActive Boolean @default(false)
+
+  suspendedByAdminId String?
+  suspendedByAdmin   Admin?  @relation(fields: [suspendedByAdminId], references: [id])
+  suspendedReason    String?
+  suspendedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One row per real order placed via ILiveTradingAdapter. Never mutated
+// destructively - status/fill fields are updated as the broker reports
+// progress, but rawRequest/rawResponse and the LiveOrderEvent trail below
+// are an append-only audit record (SEBI record-keeping - see
+// docs/LIVE_TRADING.md). Deliberately not reusing the paper `Order` model:
+// product/order-type codes, and the presence of a real brokerOrderId, differ
+// enough that conflating them risks a real order being mistaken for (or
+// mixed into P&L math with) a virtual one.
+model LiveOrder {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  brokerLinkId String
+  brokerLink   BrokerLink @relation(fields: [brokerLinkId], references: [id])
+  broker       String // snapshot of BrokerLink.provider at order time, in case the user later relinks a different broker
+
+  exchange      String // NSE | BSE | NFO | MCX
+  tradingSymbol String
+  instrumentToken String?
+
+  transactionType TransactionType
+  orderType       OrderType
+  productType     String // broker-native product code (varies by broker, e.g. Zerodha MIS/CNC/NRML) - kept as a plain string rather than the ProductType enum for that reason
+
+  quantity      Int
+  price         Decimal? @db.Decimal(18, 2)
+  triggerPrice  Decimal? @db.Decimal(18, 2)
+
+  brokerOrderId    String? // broker's own order id, once accepted
+  status           LiveOrderStatus @default(PENDING_SUBMISSION)
+  filledQuantity   Int             @default(0)
+  averageFillPrice Decimal?        @db.Decimal(18, 2)
+  rejectionReason  String?
+
+  // SEBI Feb 2025 circular: every algo/API order must carry a unique
+  // exchange-issued Algo ID once the platform is properly empanelled as an
+  // algo provider with the broker - see docs/LIVE_TRADING.md for what this
+  // field does (and does not yet) satisfy in this codebase.
+  algoId String?
+  // Per-order 2FA confirmation (OtpService, purpose LIVE_ORDER_2FA) required
+  // before submission - set only once verified for *this* order.
+  twoFactorVerifiedAt DateTime?
+
+  rawRequest  Json // immutable snapshot of exactly what was sent to the broker, written before the call - so even a crash mid-call leaves an audit record
+  rawResponse Json? // immutable snapshot of the broker's response/ack
+
+  placedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events LiveOrderEvent[]
+
+  @@index([userId, status])
+  @@index([brokerLinkId])
+}
+
+// Append-only trail of every state change to a LiveOrder - never updated or
+// deleted, only inserted into. This is the actual audit log a SEBI-style
+// record-keeping obligation cares about; LiveOrder itself is a convenient
+// "current state" view on top of it.
+model LiveOrderEvent {
+  id          String    @id @default(uuid())
+  liveOrderId String
+  liveOrder   LiveOrder @relation(fields: [liveOrderId], references: [id])
+  eventType   String // PLACED | BROKER_ACK | MODIFIED | CANCELLED | FILLED | PARTIALLY_FILLED | REJECTED | STATUS_POLL
+  payload     Json
+  occurredAt  DateTime  @default(now())
+
+  @@index([liveOrderId, occurredAt])
+}
+
+// ---------------------------------------------------------------------------
+// Profile, KYC and banking. See docs/KYC_AND_BANKING.md for the full flow:
+// personal/address/communication details live on UserProfile; PAN
+// verification + document upload + admin review live on Kyc/KycDocument;
+// bank account penny-drop verification lives on BankAccount. PAN
+// verification and bank verification both go through a pluggable
+// IKycProvider (Setu / Cashfree / Mock), the same adapter pattern used for
+// brokers in backend/src/brokers.
+// ---------------------------------------------------------------------------
+
+model UserProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Personal details
+  dateOfBirth DateTime?
+  gender      Gender?
+
+  // Address details
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  pincode      String?
+  country      String  @default("India")
+
+  // Communication details
+  phone           String?
+  phoneVerified   Boolean @default(false)
+  alternateEmail  String?
+
+  // How contest winnings should be paid out - see docs/PRIZES_AND_PAYOUTS.md.
+  // Snapshotted onto each ContestPrizeAward at computation time, so changing
+  // this later never retroactively changes an already-computed award.
+  payoutPreference PayoutPreference @default(CASH_WITHDRAWAL)
+
+  updatedAt DateTime @updatedAt
+}
+
+model Kyc {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  status KycStatus @default(NOT_STARTED)
+
+  panNumber               String?
+  panVerified             Boolean   @default(false)
+  panVerifiedAt           DateTime?
+  panVerificationProvider String? // SETU | CASHFREE | MOCK
+  panVerificationRaw      Json? // raw provider response, kept for audit
+
+  submittedAt      DateTime?
+  reviewedAt        DateTime?
+  reviewedByAdminId String?
+  reviewedByAdmin    Admin?    @relation(fields: [reviewedByAdminId], references: [id])
+  rejectionReason    String?
+
+  documents KycDocument[]
+
+  updatedAt DateTime @updatedAt
+}
+
+model KycDocument {
+  id       String            @id @default(uuid())
+  kycId    String
+  kyc      Kyc               @relation(fields: [kycId], references: [id])
+  type     KycDocumentType
+  filePath String // path on disk (or object storage key in production - see docs/KYC_AND_BANKING.md)
+  originalFileName String
+  mimeType String
+  status   KycDocumentStatus @default(PENDING)
+  reviewNote String?
+  uploadedAt DateTime @default(now())
+
+  @@index([kycId])
+}
+
+model BankAccount {
+  id                String                  @id @default(uuid())
+  userId            String
+  user              User                    @relation(fields: [userId], references: [id])
+  accountHolderName String
+  accountNumber     String // NOTE: stored in plaintext for this demo project - see docs/KYC_AND_BANKING.md#security-notes for what production requires
+  ifsc              String
+  bankName          String?
+  branch            String?
+  isPrimary         Boolean                 @default(false)
+  verificationStatus BankVerificationStatus @default(NOT_VERIFIED)
+  verificationProvider String? // SETU | CASHFREE | MOCK
+  verificationRaw   Json?
+  nameAtBank        String?
+  nameMatchResult   String? // e.g. MATCH | PARTIAL_MATCH | NO_MATCH
+  verifiedAt        DateTime?
+  createdAt         DateTime                @default(now())
+
+  @@unique([userId, accountNumber, ifsc])
+}
+
+// Simple OTP flow for phone verification. No SMS gateway is wired up in
+// this project (see docs/KYC_AND_BANKING.md) - the OTP is returned directly
+// in the API response in non-production environments so the flow is fully
+// testable without a paid SMS provider.
+model OtpVerification {
+  id        String     @id @default(uuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  purpose   OtpPurpose
+  target    String // the phone number being verified
+  otpHash   String
+  expiresAt DateTime
+  verified  Boolean    @default(false)
+  attempts  Int        @default(0)
+  createdAt DateTime   @default(now())
+
+  @@index([userId, purpose])
+}
