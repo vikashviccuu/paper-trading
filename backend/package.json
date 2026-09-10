@@ -4,7 +4,7 @@
   "description": "Multi-broker paper trading platform backend (equity + F&O virtual trading engine)",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "set NODE_OPTIONS=--max-old-space-size=4096 && ts-node-dev --respawn --transpile-only --ignore-watch node_modules src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",

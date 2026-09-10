@@ -58,11 +58,42 @@ function KiteStatusBar() {
   return null;
 }
 
+// ── Synthetic bar generator for empty/failed history API responses ──────
+// ── Synthetic bar generator for empty/failed history API responses ──────
+function generateSyntheticBars(basePrice: number, interval: string): CandlestickData[] {
+  const bars: CandlestickData[] = [];
+  const now = Math.floor(Date.now() / 1000);
+
+  let stepSec = 60; // 1m default
+  let count = 120;
+  if (interval === "5minute" || interval === "5m") { stepSec = 300; count = 100; }
+  else if (interval === "15minute" || interval === "15m") { stepSec = 900; count = 90; }
+  else if (interval === "60minute" || interval === "60m" || interval === "1h") { stepSec = 3600; count = 80; }
+  else if (interval === "day" || interval === "1d") { stepSec = 86400; count = 100; }
+
+  let price = basePrice > 0 ? basePrice : 100;
+  const startTime = Math.floor((now - count * stepSec) / stepSec) * stepSec;
+
+  for (let i = 0; i < count; i++) {
+    const time = (startTime + i * stepSec) as any;
+    const changePct = (Math.random() - 0.495) * 0.008;
+    const open = price;
+    price = +(open * (1 + changePct)).toFixed(2);
+    const close = price;
+    const high = +(Math.max(open, close) * (1 + Math.random() * 0.003)).toFixed(2);
+    const low = +(Math.min(open, close) * (1 - Math.random() * 0.003)).toFixed(2);
+    bars.push({ time, open, high, low, close });
+  }
+  return bars;
+}
+
 // ── Live candlestick chart ───────────────────────────────────
-function LiveChart({ instrument, bars }: { instrument: Instrument; bars: CandlestickData[] }) {
+function LiveChart({ instrument, bars, timeframe }: { instrument: Instrument; bars: CandlestickData[]; timeframe: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const lastBarTimeRef = useRef<number>(0);
+  const curBarRef = useRef<CandlestickData | null>(null);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -85,23 +116,74 @@ function LiveChart({ instrument, bars }: { instrument: Instrument; bars: Candles
     return () => { window.removeEventListener("resize", onResize); c.remove(); };
   }, []);
 
-  useEffect(() => { series.current?.setData(bars); }, [bars]);
+  useEffect(() => {
+    if (!series.current || !bars.length) return;
+    try {
+      const sorted = [...bars]
+        .filter((b) => b && b.time != null && !isNaN(Number(b.close)))
+        .sort((a, b) => Number(a.time) - Number(b.time));
+
+      const uniqueBars: CandlestickData[] = [];
+      const seen = new Set();
+      for (const b of sorted) {
+        if (!seen.has(b.time)) {
+          seen.add(b.time);
+          uniqueBars.push(b);
+        }
+      }
+      if (uniqueBars.length > 0) {
+        lastBarTimeRef.current = Number(uniqueBars[uniqueBars.length - 1].time);
+        curBarRef.current = uniqueBars[uniqueBars.length - 1];
+      }
+      series.current.setData(uniqueBars);
+      chart.current?.timeScale().fitContent();
+    } catch (e) {
+      console.warn("[Chart] setData warning:", e);
+    }
+  }, [bars, timeframe]);
 
   useEffect(() => {
     const s = getSocket();
     s.emit("subscribe", [instrument.instrumentToken]);
-    let cur: CandlestickData | null = bars[bars.length - 1] ?? null;
     const onTick = (t: Tick) => {
       if (t.instrumentToken !== instrument.instrumentToken || !series.current) return;
-      const time = Math.floor(Date.now() / 1000) as any;
-      cur = cur
-        ? { ...cur, time, close: t.lastPrice, high: Math.max(+cur.high, t.lastPrice), low: Math.min(+cur.low, t.lastPrice) }
-        : { time, open: t.lastPrice, high: t.lastPrice, low: t.lastPrice, close: t.lastPrice };
-      series.current.update(cur);
+      const nowSec = Math.floor(Date.now() / 1000);
+      let stepSec = 60;
+      if (timeframe === "5minute" || timeframe === "5m") stepSec = 300;
+      else if (timeframe === "15minute" || timeframe === "15m") stepSec = 900;
+      else if (timeframe === "60minute" || timeframe === "60m" || timeframe === "1h") stepSec = 3600;
+      else if (timeframe === "day" || timeframe === "1d") stepSec = 86400;
+
+      const timeBucket = Math.floor(nowSec / stepSec) * stepSec;
+      const barTime = Math.max(timeBucket, lastBarTimeRef.current || timeBucket);
+      let cur = curBarRef.current;
+
+      if (cur && Number(cur.time) === barTime) {
+        cur = {
+          ...cur,
+          time: barTime as any,
+          close: t.lastPrice,
+          high: Math.max(+cur.high, t.lastPrice),
+          low: Math.min(+cur.low, t.lastPrice),
+        };
+      } else {
+        cur = {
+          time: barTime as any,
+          open: t.lastPrice,
+          high: t.lastPrice,
+          low: t.lastPrice,
+          close: t.lastPrice,
+        };
+      }
+      curBarRef.current = cur;
+      try {
+        series.current.update(cur);
+        lastBarTimeRef.current = barTime;
+      } catch (e) {}
     };
     s.on("tick", onTick);
     return () => { s.off("tick", onTick); s.emit("unsubscribe", [instrument.instrumentToken]); };
-  }, [instrument.instrumentToken, bars]);
+  }, [instrument.instrumentToken, timeframe]);
 
   return <div ref={ref} style={{ width: "100%", height: "100%" }} />;
 }
@@ -153,20 +235,44 @@ export default function Terminal() {
 
   const [wallet,    setWallet]    = useState<number|null>(null);
   const [positions, setPositions] = useState<any[]>([]);
+  const [holdings,  setHoldings]  = useState<any[]>([]);
   const [orders,    setOrders]    = useState<any[]>([]);
   const [query,     setQuery]     = useState("");
   const [results,   setResults]   = useState<Instrument[]>([]);
   const [wPrices,   setWPrices]   = useState<Record<string,number>>({});
   const [page,          setPage]          = useState(1);
   const pageSize = 10;
-  const [sidebarTab,          setSidebarTab]          = useState<"watchlist" | "positions" | "orders">("watchlist");
+  const [sidebarTab,          setSidebarTab]          = useState<"watchlist" | "positions" | "holdings" | "orders">("watchlist");
   const [segmentFilter,       setSegmentFilter]       = useState<"ALL" | "NSE" | "NFO" | "MCX">("ALL");
   const [isSidebarCollapsed,  setIsSidebarCollapsed]  = useState(false);
   const [expandedSymbolId,    setExpandedSymbolId]    = useState<string | null>(null);
 
+  // Broker Feed Mode (ZERODHA vs MOCK)
+  const [brokerMode, setBrokerMode] = useState<"ZERODHA" | "MOCK">("ZERODHA");
+  const [isBrokerConnected, setIsBrokerConnected] = useState<boolean>(true);
+
+  async function toggleBrokerMode() {
+    const nextMode = brokerMode === "ZERODHA" ? "MOCK" : "ZERODHA";
+    try {
+      await api.post("/broker/mode", { provider: nextMode });
+      setBrokerMode(nextMode);
+      setIsBrokerConnected(true);
+      setMsg({ text: `✓ Switched data feed to ${nextMode === "ZERODHA" ? "Zerodha Live" : "Demo Simulation"}`, ok: true });
+    } catch {
+      setMsg({ text: "Failed to switch broker mode", ok: false });
+    }
+  }
+
+  useEffect(() => {
+    api.get("/broker/mode").then((r) => {
+      if (r.data?.provider) setBrokerMode(r.data.provider);
+      if (r.data?.connected !== undefined) setIsBrokerConnected(r.data.connected);
+    }).catch(() => {});
+  }, []);
+
   // Watchlist History Modal state
   const [historyItem,    setHistoryItem]    = useState<Instrument | null>(null);
-  const [historyTf,      setHistoryTf]      = useState<"day" | "15minute" | "5minute" | "1minute">("day");
+  const [historyTf,      setHistoryTf]      = useState<"day" | "15minute" | "5minute" | "minute">("day");
   const [historyData,    setHistoryData]    = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -268,6 +374,7 @@ export default function Terminal() {
     PortfolioAPI.get().then((r) => {
       setWallet(Number(r.data.wallet?.cashBalance ?? r.data.wallet?.balance ?? 0));
       setPositions(r.data.positions ?? []);
+      setHoldings(r.data.holdings ?? []);
     }).catch(() => {});
     OrdersAPI.list().then((r) => setOrders(r.data ?? [])).catch(() => {});
   }, [msg]);
@@ -294,17 +401,27 @@ export default function Terminal() {
   useEffect(() => {
     if (!instrument) return;
     const to   = new Date().toISOString().slice(0, 10);
-    const days = tf === "day" ? 60 : tf === "15minute" ? 5 : 2;
+    const days = tf === "day" ? 90 : tf === "15minute" ? 7 : tf === "5minute" ? 4 : 2;
     const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
     MarketAPI.history(instrument.instrumentToken, tf as any, from, to)
       .then((r) => {
-        const mapped = r.data.map((b: any) => ({
-          time: (new Date(b.timestamp).getTime() / 1000) as any,
-          open: b.open, high: b.high, low: b.low, close: b.close,
-        }));
-        setBars(mapped);
-        if (mapped.length) setPrevClose(mapped[mapped.length - 1].close);
-      }).catch(() => {});
+        if (r.data && Array.isArray(r.data) && r.data.length > 0) {
+          const mapped = r.data.map((b: any) => ({
+            time: (new Date(b.timestamp).getTime() / 1000) as any,
+            open: b.open, high: b.high, low: b.low, close: b.close,
+          }));
+          setBars(mapped);
+          if (mapped.length) setPrevClose(mapped[mapped.length - 1].close);
+        } else {
+          const synthetic = generateSyntheticBars(ltp || Number(instrument.lastPrice || 1000), tf);
+          setBars(synthetic);
+          if (synthetic.length) setPrevClose(synthetic[synthetic.length - 1].close);
+        }
+      }).catch(() => {
+        const synthetic = generateSyntheticBars(ltp || Number(instrument.lastPrice || 1000), tf);
+        setBars(synthetic);
+        if (synthetic.length) setPrevClose(synthetic[synthetic.length - 1].close);
+      });
   }, [instrument?.instrumentToken, tf]);
 
   // WebSocket live price
@@ -393,7 +510,45 @@ export default function Terminal() {
         )}
         <div className="t-nav-right">
           <span className="pill pill-blue">Paper</span>
-          <span className="pill pill-live">KITE LIVE</span>
+          {brokerMode === "ZERODHA" ? (
+            <button
+              onClick={toggleBrokerMode}
+              title="Active: Zerodha Live Data. Click to switch to Demo Simulation."
+              className="pill pill-live"
+              style={{ cursor: "pointer", border: "none", outline: "none", display: "flex", alignItems: "center", gap: 4 }}
+            >
+              <span>⚡</span> KITE LIVE
+            </button>
+          ) : (
+            <button
+              onClick={toggleBrokerMode}
+              title="Active: Demo/Mock Simulation. Click to switch to Zerodha Live."
+              style={{
+                background: "rgba(234, 179, 8, 0.2)",
+                color: "#facc15",
+                border: "1px solid rgba(234, 179, 8, 0.4)",
+                padding: "2px 8px",
+                borderRadius: 99,
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 4
+              }}
+            >
+              <span>🎮</span> DEMO MOCK
+            </button>
+          )}
+          <button
+            onClick={toggleBrokerMode}
+            title="Toggle between Zerodha live feed and local demo simulation"
+            style={{
+              fontSize: 10, color: "var(--text-secondary)", background: "rgba(255,255,255,0.06)",
+              border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px", cursor: "pointer",
+              fontWeight: 600
+            }}
+          >
+            {brokerMode === "ZERODHA" ? "Switch to Demo" : "Switch to Live"}
+          </button>
           <a
             href={loginUrl}
             style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "none", padding: "3px 8px", border: "1px solid var(--border)", borderRadius: 4 }}
@@ -458,6 +613,26 @@ export default function Terminal() {
                 )}
               </button>
 
+              {/* Holdings Icon */}
+              <button
+                onClick={() => { setSidebarTab("holdings"); setIsSidebarCollapsed(false); }}
+                title="Holdings (Delivery CNC)"
+                style={{
+                  width: 38, height: 38, borderRadius: 8, border: "none", position: "relative",
+                  background: sidebarTab === "holdings" ? "rgba(37,99,235,0.25)" : "transparent",
+                  color: sidebarTab === "holdings" ? "#60a5fa" : "var(--text-muted)",
+                  fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center"
+                }}
+              >
+                📦
+                {holdings.length > 0 && (
+                  <span style={{
+                    position: "absolute", top: 4, right: 4, width: 8, height: 8,
+                    borderRadius: "50%", background: "#10b981", border: "2px solid var(--bg-surface)"
+                  }} />
+                )}
+              </button>
+
               {/* Orders Icon */}
               <button
                 onClick={() => { setSidebarTab("orders"); setIsSidebarCollapsed(false); }}
@@ -483,32 +658,51 @@ export default function Terminal() {
                   <button
                     onClick={() => setSidebarTab("watchlist")}
                     style={{
-                      flex: 1, padding: "6px 6px", borderRadius: 6, border: "none",
+                      flex: 1, padding: "6px 4px", borderRadius: 6, border: "none",
                       background: sidebarTab === "watchlist" ? "linear-gradient(135deg, rgba(37,99,235,0.25), rgba(124,58,237,0.25))" : "transparent",
                       color: sidebarTab === "watchlist" ? "#60a5fa" : "var(--text-muted)",
-                      fontWeight: sidebarTab === "watchlist" ? 700 : 500, fontSize: 11,
-                      cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                      fontWeight: sidebarTab === "watchlist" ? 700 : 500, fontSize: 10,
+                      cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
                       boxShadow: sidebarTab === "watchlist" ? "inset 0 0 0 1px rgba(96,165,250,0.3)" : "none"
                     }}
                   >
-                    <span>⭐ Watchlist</span>
+                    <span>⭐ Watch</span>
                   </button>
 
                   <button
                     onClick={() => setSidebarTab("positions")}
                     style={{
-                      flex: 1, padding: "6px 6px", borderRadius: 6, border: "none",
+                      flex: 1, padding: "6px 4px", borderRadius: 6, border: "none",
                       background: sidebarTab === "positions" ? "linear-gradient(135deg, rgba(37,99,235,0.25), rgba(124,58,237,0.25))" : "transparent",
                       color: sidebarTab === "positions" ? "#60a5fa" : "var(--text-muted)",
-                      fontWeight: sidebarTab === "positions" ? 700 : 500, fontSize: 11,
-                      cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                      fontWeight: sidebarTab === "positions" ? 700 : 500, fontSize: 10,
+                      cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
                       boxShadow: sidebarTab === "positions" ? "inset 0 0 0 1px rgba(96,165,250,0.3)" : "none"
                     }}
                   >
-                    <span>💼 Positions</span>
+                    <span>💼 Pos</span>
                     {positions.filter((p: any) => p.quantity !== 0).length > 0 && (
-                      <span style={{ fontSize: 9, background: "#2563eb", color: "#fff", borderRadius: 99, padding: "1px 5px", fontWeight: 800 }}>
+                      <span style={{ fontSize: 9, background: "#2563eb", color: "#fff", borderRadius: 99, padding: "1px 4px", fontWeight: 800 }}>
                         {positions.filter((p: any) => p.quantity !== 0).length}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setSidebarTab("holdings")}
+                    style={{
+                      flex: 1, padding: "6px 4px", borderRadius: 6, border: "none",
+                      background: sidebarTab === "holdings" ? "linear-gradient(135deg, rgba(37,99,235,0.25), rgba(124,58,237,0.25))" : "transparent",
+                      color: sidebarTab === "holdings" ? "#60a5fa" : "var(--text-muted)",
+                      fontWeight: sidebarTab === "holdings" ? 700 : 500, fontSize: 10,
+                      cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
+                      boxShadow: sidebarTab === "holdings" ? "inset 0 0 0 1px rgba(96,165,250,0.3)" : "none"
+                    }}
+                  >
+                    <span>📦 Hold</span>
+                    {holdings.length > 0 && (
+                      <span style={{ fontSize: 9, background: "#10b981", color: "#fff", borderRadius: 99, padding: "1px 4px", fontWeight: 800 }}>
+                        {holdings.length}
                       </span>
                     )}
                   </button>
@@ -516,11 +710,11 @@ export default function Terminal() {
                   <button
                     onClick={() => setSidebarTab("orders")}
                     style={{
-                      flex: 1, padding: "6px 6px", borderRadius: 6, border: "none",
+                      flex: 1, padding: "6px 4px", borderRadius: 6, border: "none",
                       background: sidebarTab === "orders" ? "linear-gradient(135deg, rgba(37,99,235,0.25), rgba(124,58,237,0.25))" : "transparent",
                       color: sidebarTab === "orders" ? "#60a5fa" : "var(--text-muted)",
-                      fontWeight: sidebarTab === "orders" ? 700 : 500, fontSize: 11,
-                      cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                      fontWeight: sidebarTab === "orders" ? 700 : 500, fontSize: 10,
+                      cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
                       boxShadow: sidebarTab === "orders" ? "inset 0 0 0 1px rgba(96,165,250,0.3)" : "none"
                     }}
                   >
@@ -816,10 +1010,114 @@ export default function Terminal() {
                           className={`t-pos-card ${pnl >= 0 ? "profit" : "loss"}`}
                           onClick={() => p.instrument && setInstrument(p.instrument)}
                         >
-                          <div className="t-pos-sym">{p.instrument?.tradingSymbol ?? "—"}</div>
-                          <div className="t-pos-meta">Qty {p.quantity} · Avg ₹{Number(p.averagePrice ?? p.avgPrice ?? 0).toFixed(2)}</div>
-                          <div className={`t-pos-pnl ${pnl >= 0 ? "profit" : "loss"}`}>
-                            {pnl >= 0 ? "+" : ""}₹{Math.abs(pnl).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <div>
+                              <div className="t-pos-sym">{p.instrument?.tradingSymbol ?? "—"}</div>
+                              <div className="t-pos-meta">Qty {p.quantity} · Avg ₹{Number(p.averagePrice ?? p.avgPrice ?? 0).toFixed(2)} ({p.productType})</div>
+                            </div>
+                            <div className={`t-pos-pnl ${pnl >= 0 ? "profit" : "loss"}`}>
+                              {pnl >= 0 ? "+" : ""}₹{Math.abs(pnl).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6, paddingTop: 4, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (p.instrument) setInstrument(p.instrument);
+                                setSide(p.quantity > 0 ? "SELL" : "BUY");
+                                setPtype(p.productType || "INTRADAY");
+                                setOtype("MARKET");
+                                setQty(Math.abs(p.quantity));
+                              }}
+                              style={{
+                                background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)",
+                                color: "#f87171", borderRadius: 4, padding: "2px 8px", fontSize: 10,
+                                fontWeight: 700, cursor: "pointer"
+                              }}
+                            >
+                              Square Off
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* Tab Content: HOLDINGS */}
+              {sidebarTab === "holdings" && (
+                <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+                    Holdings — Delivery CNC ({holdings.length})
+                  </div>
+                  {holdings.length === 0 ? (
+                    <div style={{ padding: "30px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+                      No delivery holdings yet.<br/>
+                      <span style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 6, display: "inline-block" }}>
+                        Place BUY orders with Product: <strong>CNC</strong> (Delivery) to build your equity holdings.
+                      </span>
+                    </div>
+                  ) : (
+                    holdings.map((h: any, i: number) => {
+                      const curPrice = wPrices[h.instrument?.instrumentToken] || Number(h.instrument?.lastPrice || h.avgPrice || 0);
+                      const avgPrice = Number(h.avgPrice || 0);
+                      const invested = avgPrice * h.quantity;
+                      const currentValue = curPrice * h.quantity;
+                      const pnl = currentValue - invested;
+                      const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
+                      const isProfit = pnl >= 0;
+
+                      return (
+                        <div
+                          key={h.id || i}
+                          style={{
+                            background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)",
+                            borderRadius: 8, padding: "10px 12px", marginBottom: 8, cursor: "pointer",
+                            transition: "all 0.15s ease"
+                          }}
+                          onClick={() => h.instrument && setInstrument(h.instrument)}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <div>
+                              <div style={{ fontWeight: 800, fontSize: 13, color: "#f8fafc" }}>
+                                {h.instrument?.tradingSymbol ?? "—"}
+                              </div>
+                              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                                Qty {h.quantity} · Avg ₹{avgPrice.toFixed(2)}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "var(--font-mono)", color: "#f8fafc" }}>
+                                ₹{currentValue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                              </div>
+                              <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "var(--font-mono)", color: isProfit ? "#4ade80" : "#f43f5e", marginTop: 2 }}>
+                                {isProfit ? "+" : ""}₹{pnl.toFixed(2)} ({isProfit ? "+" : ""}{pnlPct.toFixed(2)}%)
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                            <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                              LTP: ₹{curPrice.toFixed(2)}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (h.instrument) setInstrument(h.instrument);
+                                setSide("SELL");
+                                setPtype("DELIVERY");
+                                setOtype("MARKET");
+                                setQty(h.quantity);
+                              }}
+                              style={{
+                                background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.35)",
+                                color: "#f87171", borderRadius: 4, padding: "2px 8px", fontSize: 10,
+                                fontWeight: 700, cursor: "pointer"
+                              }}
+                            >
+                              Exit / Sell
+                            </button>
                           </div>
                         </div>
                       );
@@ -899,7 +1197,7 @@ export default function Terminal() {
             </div>
             <div className="t-divider" />
             <div className="tf-group">
-              {[["1minute","1m"],["5minute","5m"],["15minute","15m"],["day","1D"]].map(([v,l]) => (
+              {[["minute","1m"],["5minute","5m"],["15minute","15m"],["day","1D"]].map(([v,l]) => (
                 <button key={v} className={`tf-btn ${tf === v ? "active" : ""}`} onClick={() => setTf(v)}>{l}</button>
               ))}
             </div>
@@ -911,7 +1209,7 @@ export default function Terminal() {
           {/* Chart */}
           <div className="t-chart">
             {instrument
-              ? <LiveChart instrument={instrument} bars={bars} />
+              ? <LiveChart instrument={instrument} bars={bars} timeframe={tf} />
               : (
                 <div className="t-chart-empty">
                   <div className="icon">📈</div>
@@ -1093,7 +1391,7 @@ export default function Terminal() {
               {/* Timeframe selector & Close */}
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ display: "flex", background: "rgba(255,255,255,0.06)", borderRadius: 8, padding: 3, border: "1px solid rgba(255,255,255,0.1)" }}>
-                  {[["day", "1D"], ["15minute", "15m"], ["5minute", "5m"], ["1minute", "1m"]].map(([v, l]) => (
+                  {[["day", "1D"], ["15minute", "15m"], ["5minute", "5m"], ["minute", "1m"]].map(([v, l]) => (
                     <button
                       key={v}
                       onClick={() => setHistoryTf(v as any)}

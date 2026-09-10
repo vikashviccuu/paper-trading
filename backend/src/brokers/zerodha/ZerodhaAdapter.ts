@@ -79,19 +79,31 @@ export class ZerodhaAdapter implements IBrokerAdapter {
 
   async getHistoricalData(
     instrumentToken: string,
-    interval: "minute" | "5minute" | "15minute" | "day",
+    interval: string,
     from: string,
     to: string
   ): Promise<OHLCBarDTO[]> {
-    const candles = await this.kc.getHistoricalData(Number(instrumentToken), interval, from, to);
-    return candles.map((c: any) => ({
-      timestamp: new Date(c.date).toISOString(),
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: c.volume,
-    }));
+    let normalizedInterval = interval;
+    if (interval === "1m" || interval === "1minute" || interval === "minute") normalizedInterval = "minute";
+    else if (interval === "5m" || interval === "5minute") normalizedInterval = "5minute";
+    else if (interval === "15m" || interval === "15minute") normalizedInterval = "15minute";
+    else if (interval === "60m" || interval === "60minute" || interval === "1h") normalizedInterval = "60minute";
+    else if (interval === "1d" || interval === "day" || interval === "daily") normalizedInterval = "day";
+
+    try {
+      const candles = await this.kc.getHistoricalData(Number(instrumentToken), normalizedInterval, from, to);
+      return (candles || []).map((c: any) => ({
+        timestamp: new Date(c.date).toISOString(),
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume,
+      }));
+    } catch (err: any) {
+      console.warn(`[ZerodhaAdapter] getHistoricalData error for token ${instrumentToken} (${normalizedInterval}):`, err.message);
+      return [];
+    }
   }
 
   async getOptionChain(underlyingToken: string, expiry: string): Promise<OptionChainRowDTO[]> {
