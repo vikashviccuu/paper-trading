@@ -32,31 +32,38 @@ function AdminPrivateRoute({ children }: { children: JSX.Element }) {
 
 function AdminApp() {
   const { admin, logout } = useAdminAuth();
+  const location = useLocation();
+  const isTerminal = location.pathname === "/admin/terminal" || location.pathname === "/admin/trade";
+
   return (
-    <div style={{ minHeight: "100vh", background: "#080b12" }}>
+    <div style={{ minHeight: "100vh", background: "#080b12", display: "flex", flexDirection: "column" }}>
       <nav style={{
         background: "#0d1117", borderBottom: "1px solid #1e2d3d",
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 24px", height: 52,
+        padding: "0 24px", height: 52, flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-          <Link to="/admin" style={{ fontWeight: 800, color: "#60a5fa", fontSize: 15 }}>Admin Panel</Link>
+          <Link to="/admin" style={{ fontWeight: 800, color: "#60a5fa", fontSize: 15, textDecoration: "none" }}>Admin Panel</Link>
           {admin && <>
-            <Link to="/admin" style={{ color: "#8b949e", fontSize: 13 }}>Contests</Link>
-            <Link to="/admin/kyc" style={{ color: "#8b949e", fontSize: 13 }}>KYC Review</Link>
-            <Link to="/admin/live-trading" style={{ color: "#8b949e", fontSize: 13 }}>Live Trading</Link>
+            <Link to="/admin" style={{ color: "#8b949e", fontSize: 13, textDecoration: "none" }}>Contests</Link>
+            <Link to="/admin/terminal" style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13, textDecoration: "none" }}>Terminal ↗</Link>
+            <Link to="/admin/kyc" style={{ color: "#8b949e", fontSize: 13, textDecoration: "none" }}>KYC Review</Link>
+            <Link to="/admin/live-trading" style={{ color: "#8b949e", fontSize: 13, textDecoration: "none" }}>Live Trading</Link>
           </>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {admin && <span style={{ color: "#8b949e", fontSize: 13 }}>{admin.name}</span>}
           {admin && <button onClick={logout} style={{ background: "transparent", border: "1px solid #1e2d3d", color: "#8b949e", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12 }}>Log out</button>}
-          <Link to="/" style={{ color: "#475569", fontSize: 12 }}>← Trading App</Link>
+          <Link to="/" style={{ color: "#475569", fontSize: 12, textDecoration: "none" }}>← Trading App</Link>
         </div>
       </nav>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}>
+      <div style={{ flex: 1, overflow: isTerminal ? "hidden" : "auto", maxWidth: isTerminal ? "100%" : 1100, margin: isTerminal ? 0 : "0 auto", width: "100%", padding: isTerminal ? 0 : "24px 16px" }}>
         <Routes>
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/zerodha/callback" element={<ZerodhaCallback />} />
           <Route path="/admin" element={<AdminPrivateRoute><AdminDashboard /></AdminPrivateRoute>} />
+          <Route path="/admin/terminal" element={<AdminPrivateRoute><Trade /></AdminPrivateRoute>} />
+          <Route path="/admin/trade" element={<AdminPrivateRoute><Trade /></AdminPrivateRoute>} />
           <Route path="/admin/contests/:id" element={<AdminPrivateRoute><AdminContestDetail /></AdminPrivateRoute>} />
           <Route path="/admin/contests/:id/prizes" element={<AdminPrivateRoute><AdminContestPrizes /></AdminPrivateRoute>} />
           <Route path="/admin/kyc" element={<AdminPrivateRoute><AdminKycQueue /></AdminPrivateRoute>} />
@@ -162,6 +169,8 @@ function UserApp() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/zerodha/callback" element={<ZerodhaCallback />} />
           <Route path="/broker/zerodha/callback" element={<ZerodhaCallback />} />
+          <Route path="/trade/broker/zerodha/callback" element={<ZerodhaCallback />} />
+          <Route path="/admin/zerodha/callback" element={<ZerodhaCallback />} />
           <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/trade" element={<PrivateRoute><Trade /></PrivateRoute>} />
           <Route path="/portfolio" element={<PrivateRoute><Portfolio /></PrivateRoute>} />
@@ -180,8 +189,8 @@ function UserApp() {
 export default function App() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  // Intercept Zerodha redirect on ANY path (/trade?status=success&request_token=...)
-  if (searchParams.get("request_token") && searchParams.get("status") === "success") {
+  // Intercept Zerodha redirect on ANY path (/admin/zerodha/callback?request_token=... or /trade?request_token=...)
+  if (searchParams.get("request_token")) {
     return <ZerodhaCallback />;
   }
   return location.pathname.startsWith("/admin") ? <AdminApp /> : <UserApp />;

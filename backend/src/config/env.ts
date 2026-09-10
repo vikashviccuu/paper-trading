@@ -1,13 +1,50 @@
 import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
+
+// Load environment-specific file if present (.env.local, .env.uat, .env.production, etc.)
+const targetEnv = (process.env.APP_ENV || process.env.NODE_ENV || "development").toLowerCase();
+const envFileName = `.env.${targetEnv}`;
+const envFilePath = path.resolve(process.cwd(), envFileName);
+
+if (fs.existsSync(envFilePath)) {
+  dotenv.config({ path: envFilePath });
+}
+// Fallback / default .env loading
 dotenv.config();
 
 function req(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+function getZerodhaDefaultKey(): string {
+  if (process.env.KITE_API_KEY) return process.env.KITE_API_KEY;
+  if (targetEnv === "uat" || targetEnv === "staging" || targetEnv === "production" || targetEnv === "prod") {
+    return "jfwd2gvwal8pq0rp"; // UAT / Production Server API Key
+  }
+  return "ouuv4g2r3iyafu5c"; // Local Server API Key
+}
+
+function getZerodhaDefaultSecret(): string {
+  if (process.env.KITE_API_SECRET) return process.env.KITE_API_SECRET;
+  if (targetEnv === "uat" || targetEnv === "staging" || targetEnv === "production" || targetEnv === "prod") {
+    return "a5j4kdo7zr2u57zfpjan8plmctdjun4t"; // UAT / Production Server API Secret
+  }
+  return "bebw5v99zjy6nkxc0m2b8d6rbueokrtw"; // Local Server API Secret
+}
+
+export function getZerodhaRedirectUrl(requestOrigin?: string): string {
+  if (process.env.ZERODHA_REDIRECT_URL) {
+    return process.env.ZERODHA_REDIRECT_URL;
+  }
+  const base = env?.CORS_ORIGIN || requestOrigin || (targetEnv === "uat" || targetEnv === "production" ? "https://187-127-178-25.sslip.io" : "http://localhost:5174");
+  return `${base.replace(/\/$/, "")}/admin/zerodha/callback`;
+}
+
 export const env = {
   PORT: Number(req("PORT", "4000")),
   NODE_ENV: req("NODE_ENV", "development"),
+  APP_ENV: req("APP_ENV", targetEnv),
   JWT_SECRET: req("JWT_SECRET", "dev-secret-change-me"),
   JWT_EXPIRES_IN: req("JWT_EXPIRES_IN", "7d"),
   CORS_ORIGIN: req("CORS_ORIGIN", "http://localhost:5174"),
@@ -21,13 +58,13 @@ export const env = {
   ADMIN_SEED_PASSWORD: req("ADMIN_SEED_PASSWORD"),
   ADMIN_SEED_NAME: req("ADMIN_SEED_NAME", "Platform Admin"),
 
-  DATABASE_URL: req("DATABASE_URL", "postgresql://postgres:root@localhost:5433/paper_treading?schema=public"),
+  DATABASE_URL: req("DATABASE_URL", "postgresql://postgres:root@127.0.0.1:5433/paper_trading?schema=public"),
   REDIS_URL: req("REDIS_URL", "redis://localhost:6379"),
 
   BROKER_PROVIDER: req("BROKER_PROVIDER", "ZERODHA") as "ZERODHA" | "UPSTOX" | "ANGELONE" | "MOCK",
 
-  KITE_API_KEY: req("KITE_API_KEY", "jfwd2gvwal8pq0rp"),
-  KITE_API_SECRET: req("KITE_API_SECRET", "a5j4kdo7zr2u57zfpjan8plmctdjun4t"),
+  KITE_API_KEY: req("KITE_API_KEY", getZerodhaDefaultKey()),
+  KITE_API_SECRET: req("KITE_API_SECRET", getZerodhaDefaultSecret()),
   KITE_ACCESS_TOKEN: req("KITE_ACCESS_TOKEN"),
 
   UPSTOX_API_KEY: req("UPSTOX_API_KEY"),

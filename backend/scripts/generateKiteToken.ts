@@ -5,8 +5,8 @@ import readline from "readline";
 const { KiteConnect } = require("kiteconnect");
 import { env } from "../src/config/env";
 
-const KITE_API_KEY = process.env.KITE_API_KEY || env.KITE_API_KEY || "jfwd2gvwal8pq0rp";
-const KITE_API_SECRET = process.env.KITE_API_SECRET || env.KITE_API_SECRET || "a5j4kdo7zr2u57zfpjan8plmctdjun4t";
+const KITE_API_KEY = process.env.KITE_API_KEY || env.KITE_API_KEY;
+const KITE_API_SECRET = process.env.KITE_API_SECRET || env.KITE_API_SECRET;
 
 async function main() {
   console.log("==================================================");

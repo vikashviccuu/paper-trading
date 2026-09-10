@@ -29,7 +29,7 @@ export default function AdminLogin() {
 
   function handleQuickFill() {
     setEmail("admin@example.com");
-    setPassword("");
+    setPassword("admin123");
   }
 
   return (

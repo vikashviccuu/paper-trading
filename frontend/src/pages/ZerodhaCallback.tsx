@@ -16,8 +16,8 @@ export default function ZerodhaCallback() {
     const requestToken = searchParams.get("request_token");
     const status = searchParams.get("status");
 
-    if (!requestToken || (status && status !== "success")) {
-      setError(`Invalid redirect — status=${status ?? "ok"}, token=${requestToken ?? "missing"}`);
+    if (!requestToken) {
+      setError(`Invalid redirect — token=${requestToken ?? "missing"}`);
       setPhase("error");
       return;
     }
@@ -35,8 +35,9 @@ export default function ZerodhaCallback() {
       .then((res) => {
         setSynced(res.data.synced);
         setPhase("done");
-        // Redirect to clean /trade after 1.2s
-        setTimeout(() => navigate("/trade", { replace: true }), 1200);
+        // Redirect to /admin if admin route, else /trade after 1.2s
+        const isAdmin = window.location.pathname.includes("/admin");
+        setTimeout(() => navigate(isAdmin ? "/admin" : "/trade", { replace: true }), 1200);
       })
       .catch((err) => {
         setError(err.response?.data?.error ?? err.message);
@@ -113,7 +114,9 @@ export default function ZerodhaCallback() {
             <div style={{ fontSize: 16, fontWeight: 800, color: "var(--red)", marginBottom: 8 }}>Authentication Failed</div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24, lineHeight: 1.6 }}>{error}</div>
             <a
-              href={`https://kite.zerodha.com/connect/login?api_key=jfwd2gvwal8pq0rp&v=3`}
+              href={typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+                ? "https://kite.zerodha.com/connect/login?api_key=ouuv4g2r3iyafu5c&v=3"
+                : "https://kite.zerodha.com/connect/login?api_key=jfwd2gvwal8pq0rp&v=3"}
               style={{
                 display: "block", padding: "10px 0", borderRadius: "var(--radius)",
                 background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 13,

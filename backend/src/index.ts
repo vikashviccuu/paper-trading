@@ -29,7 +29,17 @@ import fs from "fs";
 import path from "path";
 
 const app = express();
-app.use(cors({ origin: env.CORS_ORIGIN }));
+const allowedOrigins = [env.CORS_ORIGIN, "http://localhost:5174", "http://localhost:5173"].filter(Boolean);
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true, broker: env.BROKER_PROVIDER }));
@@ -37,7 +47,7 @@ app.get("/health", (_req, res) => res.json({ ok: true, broker: env.BROKER_PROVID
 // ── Zerodha OAuth callback ──────────────────────────────────────────────────
 // 1. Set redirect URL in https://developers.kite.trade/apps to:
 //    http://localhost:4000/api/broker/zerodha/callback
-// 2. Visit: https://kite.zerodha.com/connect/login?api_key=jfwd2gvwal8pq0rp&v=3
+// 2. Visit: https://kite.zerodha.com/connect/login?api_key=ouuv4g2r3iyafu5c&v=3
 // 3. Login → auto-redirected here → access_token saved → instruments synced
 app.get("/api/broker/zerodha/callback", async (req, res) => {
   const requestToken = req.query.request_token as string;
@@ -71,8 +81,8 @@ app.get("/api/broker/zerodha/callback", async (req, res) => {
       <script>
         fetch('/api/market/sync-instruments-public',{method:'POST'})
           .then(r=>r.json())
-          .then(d=>{ document.getElementById('status').innerHTML='&#10003; Synced <b>'+d.synced+'</b> instruments. <br><br><a href="http://localhost:5173" style="font-size:18px">&#128073; Open Trading App</a>'; })
-          .catch(e=>{ document.getElementById('status').innerHTML='Sync failed: '+e+'<br><a href="http://localhost:5173">Open app anyway</a>'; });
+          .then(d=>{ document.getElementById('status').innerHTML='&#10003; Synced <b>'+d.synced+'</b> instruments. <br><br><a href="'+(env.CORS_ORIGIN || "http://localhost:5174")+'" style="font-size:18px">&#128073; Open Trading App</a>'; })
+          .catch(e=>{ document.getElementById('status').innerHTML='Sync failed: '+e+'<br><a href="'+(env.CORS_ORIGIN || "http://localhost:5174")+'">Open app anyway</a>'; });
       </script>
     </body></html>`);
   } catch (err: any) {

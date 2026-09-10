@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { env } from "../config/env";
+import { env, getZerodhaRedirectUrl } from "../config/env";
 import { resetBrokerAdapter, getBrokerAdapter } from "../brokers/BrokerFactory";
 import fs from "fs";
 import path from "path";
@@ -111,11 +111,12 @@ brokerRouter.get("/zerodha/live-quotes", async (_req, res) => {
  * GET /api/broker/zerodha/login-url
  * Returns the Zerodha login URL for the frontend to redirect to.
  */
-brokerRouter.get("/zerodha/login-url", (_req, res) => {
+brokerRouter.get("/zerodha/login-url", (req, res) => {
+  const redirectUrl = getZerodhaRedirectUrl(req.headers.origin || req.headers.referer);
   res.json({
     url: `https://kite.zerodha.com/connect/login?api_key=${env.KITE_API_KEY}&v=3`,
     apiKey: env.KITE_API_KEY,
-    redirectUrl: "http://localhost:5174/",
+    redirectUrl,
   });
 });
 

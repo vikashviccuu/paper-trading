@@ -1,6 +1,110 @@
 import { useEffect, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AdminContest, AdminContestsAPI } from "../../services/adminApi";
+import { api } from "../../services/api";
+
+function AdminMarketBrokerCard() {
+  const [status, setStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+  const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const defaultApiKey = isLocal ? "ouuv4g2r3iyafu5c" : "jfwd2gvwal8pq0rp";
+  const [loginUrl, setLoginUrl] = useState(`https://kite.zerodha.com/connect/login?api_key=${defaultApiKey}&v=3`);
+
+  function checkStatus() {
+    api.get("/broker/zerodha/status")
+      .then((r) => setStatus(r.data.connected ? "connected" : "disconnected"))
+      .catch(() => setStatus("disconnected"));
+    
+    api.get("/broker/zerodha/login-url")
+      .then((r) => { if (r.data?.url) setLoginUrl(r.data.url); })
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    checkStatus();
+  }, []);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncMsg("");
+    try {
+      const res = await api.post("/market/sync-instruments-public");
+      setSyncMsg(`✓ Synced ${res.data.synced?.toLocaleString("en-IN") ?? 0} instruments into database`);
+    } catch {
+      setSyncMsg("Sync failed. Check Zerodha authentication.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div style={{
+      background: "rgba(13, 17, 28, 0.95)",
+      backdropFilter: "blur(16px)",
+      border: "1px solid rgba(37, 99, 235, 0.25)",
+      borderRadius: 16,
+      padding: "20px 24px",
+      marginBottom: 24,
+      boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 16
+    }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
+            System Market Data & Zerodha Broker (Admin Only)
+          </h3>
+          <span style={{
+            padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+            background: status === "connected" ? "rgba(63, 185, 80, 0.15)" : "rgba(248, 81, 73, 0.15)",
+            border: `1px solid ${status === "connected" ? "rgba(63, 185, 80, 0.35)" : "rgba(248, 81, 73, 0.35)"}`,
+            color: status === "connected" ? "#3fb950" : "#f85149"
+          }}>
+            {status === "checking" ? "Checking Status..." : status === "connected" ? "● Zerodha Connected" : "⚠ Zerodha Token Expired"}
+          </span>
+        </div>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+          Zerodha authentication & instrument master sync are managed strictly by Admin. Regular users do not see token errors and trade against this system feed.
+        </p>
+        {syncMsg && (
+          <div style={{ fontSize: 12, color: syncMsg.startsWith("✓") ? "#3fb950" : "#f85149", fontWeight: 600, marginTop: 6 }}>
+            {syncMsg}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <a
+          href={loginUrl}
+          style={{
+            padding: "8px 16px", borderRadius: 8,
+            background: "linear-gradient(135deg, #15803d, #166534)",
+            color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none",
+            boxShadow: "0 4px 12px rgba(22, 101, 52, 0.3)"
+          }}
+        >
+          🔑 Authenticate Zerodha (Admin) →
+        </a>
+
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          style={{
+            padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.1)",
+            background: "rgba(255, 255, 255, 0.06)", color: "var(--text-primary)",
+            fontWeight: 700, fontSize: 12, cursor: syncing ? "not-allowed" : "pointer"
+          }}
+        >
+          {syncing ? "Syncing..." : "🔄 Sync Instruments"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const DURATIONS = [
   { value: "WEEKLY", label: "Weekly (7 days)" },
@@ -32,6 +136,9 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "8px 0 40px" }}>
+      {/* System Broker & Market Feed Card */}
+      <AdminMarketBrokerCard />
+
       {/* Top Banner Card */}
       <div style={{
         background: "rgba(13, 17, 28, 0.85)",
