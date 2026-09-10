@@ -11,7 +11,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "seed:admin": "ts-node prisma/seedAdmin.ts",
-    "generate-kite-token": "ts-node scripts/generateKiteToken.ts"
+    "generate-kite-token": "ts-node scripts/generateKiteToken.ts",
+    "test:demo-pnl": "ts-node scripts/test_demo_pnl.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

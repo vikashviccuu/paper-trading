@@ -233,9 +233,10 @@ export default function Terminal() {
   const [tp,    setTp]    = useState<number|"">("");
   const [msg,   setMsg]   = useState<{text:string;ok:boolean}|null>(null);
 
-  const [wallet,    setWallet]    = useState<number|null>(null);
-  const [positions, setPositions] = useState<any[]>([]);
-  const [holdings,  setHoldings]  = useState<any[]>([]);
+  const [wallet,            setWallet]            = useState<number|null>(null);
+  const [walletRealizedPnL, setWalletRealizedPnL] = useState<number>(0);
+  const [positions,         setPositions]         = useState<any[]>([]);
+  const [holdings,          setHoldings]          = useState<any[]>([]);
   const [orders,    setOrders]    = useState<any[]>([]);
   const [query,     setQuery]     = useState("");
   const [results,   setResults]   = useState<Instrument[]>([]);
@@ -373,6 +374,7 @@ export default function Terminal() {
   useEffect(() => {
     PortfolioAPI.get().then((r) => {
       setWallet(Number(r.data.wallet?.cashBalance ?? r.data.wallet?.balance ?? 0));
+      setWalletRealizedPnL(Number(r.data.wallet?.realizedPnL ?? 0));
       setPositions(r.data.positions ?? []);
       setHoldings(r.data.holdings ?? []);
     }).catch(() => {});
@@ -994,8 +996,13 @@ export default function Terminal() {
               {/* Tab Content: POSITIONS */}
               {sidebarTab === "positions" && (
                 <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-                    Open Positions ({positions.filter((p: any) => p.quantity !== 0).length})
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      Open Positions ({positions.filter((p: any) => p.quantity !== 0).length})
+                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: walletRealizedPnL >= 0 ? "#4ade80" : "#f87171", background: walletRealizedPnL >= 0 ? "rgba(74, 222, 128, 0.1)" : "rgba(248, 113, 113, 0.1)", padding: "2px 6px", borderRadius: 4 }}>
+                      Realized: {walletRealizedPnL >= 0 ? "+" : ""}₹{walletRealizedPnL.toFixed(2)}
+                    </div>
                   </div>
                   {positions.filter((p: any) => p.quantity !== 0).length === 0 ? (
                     <div style={{ padding: "30px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
@@ -1261,10 +1268,20 @@ export default function Terminal() {
         <aside className="t-right">
           {/* Risk dashboard */}
           <div className="t-risk">
-            <div className="t-risk-label">Virtual Wallet</div>
+            <div className="t-risk-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Virtual Wallet</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: walletRealizedPnL >= 0 ? "#4ade80" : "#f87171", background: "rgba(255,255,255,0.05)", padding: "1px 6px", borderRadius: 4 }}>
+                Realized: {walletRealizedPnL >= 0 ? "+" : ""}₹{walletRealizedPnL.toFixed(2)}
+              </span>
+            </div>
             <div className="t-balance">₹{(wallet ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
-            <div className={`t-balance-sub ${totalPnl >= 0 ? "pos" : "neg"}`}>
-              {totalPnl >= 0 ? "+" : ""}₹{Math.abs(totalPnl).toLocaleString("en-IN", { maximumFractionDigits: 0 })} unrealised P&amp;L
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+              <div className={`t-balance-sub ${totalPnl >= 0 ? "pos" : "neg"}`} style={{ margin: 0 }}>
+                {totalPnl >= 0 ? "+" : ""}₹{Math.abs(totalPnl).toLocaleString("en-IN", { maximumFractionDigits: 2 })} unrealised
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "var(--font-mono)", color: walletRealizedPnL >= 0 ? "var(--green)" : "var(--red)" }}>
+                {walletRealizedPnL >= 0 ? "+" : ""}₹{walletRealizedPnL.toFixed(2)} realized
+              </div>
             </div>
             <div className="t-risk-row"><span className="lbl">Capital deployed</span><span className="val">{deployedPct.toFixed(0)}%</span></div>
             <div className="t-bar"><div className="t-bar-fill g" style={{ width: `${deployedPct}%` }} /></div>

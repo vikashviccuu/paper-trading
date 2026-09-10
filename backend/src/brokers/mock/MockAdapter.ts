@@ -39,6 +39,10 @@ export class MockAdapter implements IBrokerAdapter {
     return { accessToken: "mock-token" };
   }
 
+  setPrice(instrumentToken: string, price: number): void {
+    this.prices.set(instrumentToken, price);
+  }
+
   async getInstruments(): Promise<InstrumentDTO[]> {
     return MockAdapter.SEED_INSTRUMENTS;
   }
