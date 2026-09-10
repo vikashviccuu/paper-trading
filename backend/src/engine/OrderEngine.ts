@@ -70,6 +70,16 @@ export class OrderEngine {
       await portfolioService.getOrCreateWallet(input.userId, env.DEFAULT_VIRTUAL_CASH);
     }
 
+    // In CNC (DELIVERY), user cannot short sell shares they do not own
+    if (!contestParticipantId && input.productType === "DELIVERY" && input.transactionType === "SELL") {
+      const holding = await prisma.holding.findUnique({
+        where: { userId_instrumentId: { userId: input.userId, instrumentId: input.instrumentId } },
+      });
+      if (!holding || holding.quantity < input.quantity) {
+        throw new AppError(400, `Insufficient holdings to sell. You have ${holding?.quantity ?? 0} shares. For short selling, use Product: MIS (Intraday).`);
+      }
+    }
+
     const order = await prisma.order.create({
       data: {
         userId: input.userId,
