@@ -81,6 +81,7 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
 
                 io.to(`tick:${token}`).emit("tick", quote);
                 orderEngine.evaluatePendingOrders(token, lastPrice).catch(() => {});
+                prisma.instrument.updateMany({ where: { instrumentToken: token }, data: { lastPrice } }).catch(() => {});
               }
             }, 1500);
             fallbackIntervals.set(token, timer);

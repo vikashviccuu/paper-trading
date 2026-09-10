@@ -40,8 +40,11 @@ export default function Portfolio() {
     </div>
   );
 
-  const { wallet, positions, holdings } = data;
-  const pnl = Number(wallet.realizedPnL);
+  const { wallet, positions = [], holdings = [], summary } = data;
+  const pnl = Number(wallet.realizedPnL || 0);
+  const openPositions = positions.filter((p: any) => p.quantity !== 0);
+  const closedPositions = positions.filter((p: any) => p.quantity === 0 && Number(p.realizedPnL) !== 0);
+  const totalUnrealised = Number(summary?.totalUnrealisedPnL ?? openPositions.reduce((s: number, p: any) => s + Number(p.unrealisedPnL || 0), 0));
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 24px" }}>
@@ -52,10 +55,11 @@ export default function Portfolio() {
       </div>
 
       {/* Stat cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
-        <StatCard label="Cash Balance" value={`₹${Number(wallet.cashBalance).toLocaleString("en-IN")}`} />
-        <StatCard label="Margin Used" value={`₹${Number(wallet.marginUsed).toLocaleString("en-IN")}`} color="var(--yellow)" />
-        <StatCard label="Realized P&L" value={`₹${pnl.toLocaleString("en-IN")}`} color={pnl >= 0 ? "var(--green)" : "var(--red)"} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
+        <StatCard label="Cash Balance" value={`₹${Number(wallet.cashBalance).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`} />
+        <StatCard label="Margin Used" value={`₹${Number(wallet.marginUsed).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`} color="var(--yellow)" />
+        <StatCard label="Realized P&L" value={`${pnl >= 0 ? "+" : ""}₹${pnl.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`} color={pnl >= 0 ? "var(--green)" : "var(--red)"} />
+        <StatCard label="Unrealised P&L" value={`${totalUnrealised >= 0 ? "+" : ""}₹${totalUnrealised.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`} color={totalUnrealised >= 0 ? "var(--green)" : "var(--red)"} />
       </div>
 
       {/* Tabs */}
@@ -74,55 +78,113 @@ export default function Portfolio() {
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
         {(tab === "Overview" || tab === "Positions") && (
           <>
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Open Positions — Intraday / F&O
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                Open Positions — Intraday / F&amp;O ({openPositions.length})
+              </div>
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "var(--bg-elevated)" }}>
-                  {["Symbol", "Product", "Qty", "Avg Price", "Realized P&L"].map((h) => (
+                  {["Symbol", "Product", "Qty", "Avg Price", "LTP", "Unrealised P&L"].map((h) => (
                     <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {positions.length === 0 ? <EmptyRow cols={5} msg="No open positions" /> : positions.map((p: any) => (
-                  <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "11px 16px", fontWeight: 700, fontSize: 13 }}>{p.instrument.tradingSymbol}</td>
-                    <td style={{ padding: "11px 16px" }}><span style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-light)", borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}>{p.productType}</span></td>
-                    <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>{p.quantity}</td>
-                    <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>₹{Number(p.avgPrice).toFixed(2)}</td>
-                    <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: Number(p.realizedPnL) >= 0 ? "var(--green)" : "var(--red)" }}>
-                      {Number(p.realizedPnL) >= 0 ? "+" : ""}₹{Number(p.realizedPnL).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
+                {openPositions.length === 0 ? <EmptyRow cols={6} msg="No open positions" /> : openPositions.map((p: any) => {
+                  const uPnl = Number(p.unrealisedPnL ?? (p.quantity * (Number(p.ltp || p.avgPrice) - Number(p.avgPrice))));
+                  const isProfit = uPnl >= 0;
+                  return (
+                    <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "11px 16px", fontWeight: 700, fontSize: 13 }}>{p.instrument?.tradingSymbol}</td>
+                      <td style={{ padding: "11px 16px" }}><span style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-light)", borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}>{p.productType}</span></td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>{p.quantity}</td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>₹{Number(p.avgPrice).toFixed(2)}</td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>₹{Number(p.ltp || p.avgPrice).toFixed(2)}</td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: isProfit ? "var(--green)" : "var(--red)" }}>
+                        {isProfit ? "+" : ""}₹{uPnl.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+
+            {/* Closed Positions Section */}
+            {closedPositions.length > 0 && (
+              <>
+                <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.01)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    Closed Positions — Realized Today ({closedPositions.length})
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 800, fontFamily: "var(--font-mono)", color: pnl >= 0 ? "var(--green)" : "var(--red)" }}>
+                    Total Realized: {pnl >= 0 ? "+" : ""}₹{pnl.toFixed(2)}
+                  </div>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "var(--bg-elevated)" }}>
+                      {["Symbol", "Product", "Status", "Entry Price", "Realized P&L"].map((h) => (
+                        <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {closedPositions.map((p: any) => {
+                      const rPnl = Number(p.realizedPnL || 0);
+                      const isProfit = rPnl >= 0;
+                      return (
+                        <tr key={`closed-${p.id}`} style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "11px 16px", fontWeight: 700, fontSize: 13 }}>{p.instrument?.tradingSymbol}</td>
+                          <td style={{ padding: "11px 16px" }}><span style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-light)", borderRadius: 4, padding: "2px 7px", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}>{p.productType}</span></td>
+                          <td style={{ padding: "11px 16px" }}><span style={{ color: "#a5b4fc", fontSize: 11, fontWeight: 700 }}>Squared Off</span></td>
+                          <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>₹{Number(p.avgPrice).toFixed(2)}</td>
+                          <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: isProfit ? "var(--green)" : "var(--red)" }}>
+                            {isProfit ? "+" : ""}₹{rPnl.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </>
+            )}
           </>
         )}
 
         {(tab === "Overview" || tab === "Holdings") && (
           <>
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", borderTop: tab === "Overview" ? "1px solid var(--border)" : undefined, fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Holdings — Delivery
+              Holdings — Delivery CNC ({holdings.length})
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "var(--bg-elevated)" }}>
-                  {["Symbol", "Qty", "Avg Price"].map((h) => (
+                  {["Symbol", "Qty", "Avg Buy Price", "LTP", "Current Value", "P&L"].map((h) => (
                     <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid var(--border)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {holdings.length === 0 ? <EmptyRow cols={3} msg="No holdings" /> : holdings.map((h: any) => (
-                  <tr key={h.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "11px 16px", fontWeight: 700, fontSize: 13 }}>{h.instrument.tradingSymbol}</td>
-                    <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>{h.quantity}</td>
-                    <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>₹{Number(h.avgPrice).toFixed(2)}</td>
-                  </tr>
-                ))}
+                {holdings.length === 0 ? <EmptyRow cols={6} msg="No holdings" /> : holdings.map((h: any) => {
+                  const curVal = Number(h.currentValue ?? (h.quantity * Number(h.ltp || h.avgPrice)));
+                  const inv = Number(h.invested ?? (h.quantity * Number(h.avgPrice)));
+                  const hPnl = Number(h.unrealisedPnL ?? (curVal - inv));
+                  const isProfit = hPnl >= 0;
+                  return (
+                    <tr key={h.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "11px 16px", fontWeight: 700, fontSize: 13 }}>{h.instrument?.tradingSymbol}</td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>{h.quantity}</td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>₹{Number(h.avgPrice).toFixed(2)}</td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>₹{Number(h.ltp || h.avgPrice).toFixed(2)}</td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13 }}>₹{curVal.toFixed(2)}</td>
+                      <td style={{ padding: "11px 16px", fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: isProfit ? "var(--green)" : "var(--red)" }}>
+                        {isProfit ? "+" : ""}₹{hPnl.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </>

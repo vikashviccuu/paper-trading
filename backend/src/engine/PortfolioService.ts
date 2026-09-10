@@ -98,7 +98,20 @@ export class PortfolioService {
 
     const existingQty = existing.quantity;
     const existingAvg = Number(existing.avgPrice);
-    const sameDirection = Math.sign(existingQty || 1) === Math.sign(signedQty);
+
+    if (existingQty === 0) {
+      await prisma.position.update({
+        where: { id: existing.id },
+        data: {
+          quantity: signedQty,
+          avgPrice: new Prisma.Decimal(fillPrice),
+          marginBlocked: 0,
+        },
+      });
+      return { realizedPnL: 0 };
+    }
+
+    const sameDirection = Math.sign(existingQty) === Math.sign(signedQty);
 
     if (sameDirection) {
       // adding to the position -> re-average
@@ -118,7 +131,16 @@ export class PortfolioService {
 
     const remainder = existingQty + signedQty; // could flip sign if signedQty overshoots
     if (remainder === 0) {
-      await prisma.position.delete({ where: { id: existing.id } });
+      // Mark closed with quantity 0, retain realizedPnL for position tracking
+      await prisma.position.update({
+        where: { id: existing.id },
+        data: {
+          quantity: 0,
+          avgPrice: new Prisma.Decimal(existingAvg),
+          realizedPnL: { increment: realizedPnL },
+          marginBlocked: 0,
+        },
+      });
     } else {
       const flipped = Math.sign(remainder) !== Math.sign(existingQty);
       await prisma.position.update({
@@ -182,10 +204,62 @@ export class PortfolioService {
   async getPortfolioSnapshot(userId: string) {
     const [wallet, positions, holdings] = await Promise.all([
       prisma.wallet.findUnique({ where: { userId } }),
-      prisma.position.findMany({ where: { userId }, include: { instrument: true } }),
-      prisma.holding.findMany({ where: { userId }, include: { instrument: true } }),
+      prisma.position.findMany({
+        where: { userId },
+        include: { instrument: true },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.holding.findMany({
+        where: { userId },
+        include: { instrument: true },
+        orderBy: { updatedAt: "desc" },
+      }),
     ]);
-    return { wallet, positions, holdings };
+
+    const enrichedPositions = positions.map((p) => {
+      const avg = Number(p.avgPrice);
+      const ltp = Number(p.instrument?.lastPrice || avg);
+      const unrealisedPnL = p.quantity !== 0 ? p.quantity * (ltp - avg) : 0;
+      return {
+        ...p,
+        ltp,
+        unrealisedPnL: Number(unrealisedPnL.toFixed(2)),
+        realizedPnL: Number(p.realizedPnL),
+        avgPrice: avg,
+      };
+    });
+
+    const enrichedHoldings = holdings.map((h) => {
+      const avg = Number(h.avgPrice);
+      const ltp = Number(h.instrument?.lastPrice || avg);
+      const invested = h.quantity * avg;
+      const currentValue = h.quantity * ltp;
+      const unrealisedPnL = currentValue - invested;
+      const pnlPct = invested > 0 ? (unrealisedPnL / invested) * 100 : 0;
+      return {
+        ...h,
+        ltp,
+        avgPrice: avg,
+        invested: Number(invested.toFixed(2)),
+        currentValue: Number(currentValue.toFixed(2)),
+        unrealisedPnL: Number(unrealisedPnL.toFixed(2)),
+        pnlPct: Number(pnlPct.toFixed(2)),
+      };
+    });
+
+    const totalUnrealisedPnL = enrichedPositions.reduce((s, p) => s + p.unrealisedPnL, 0)
+      + enrichedHoldings.reduce((s, h) => s + h.unrealisedPnL, 0);
+
+    return {
+      wallet,
+      positions: enrichedPositions,
+      holdings: enrichedHoldings,
+      summary: {
+        totalRealizedPnL: Number(wallet?.realizedPnL || 0),
+        totalUnrealisedPnL: Number(totalUnrealisedPnL.toFixed(2)),
+        netPnL: Number((Number(wallet?.realizedPnL || 0) + totalUnrealisedPnL).toFixed(2)),
+      },
+    };
   }
 }
 

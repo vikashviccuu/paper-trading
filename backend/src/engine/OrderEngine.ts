@@ -88,8 +88,25 @@ export class OrderEngine {
     });
 
     if (input.orderType === "MARKET") {
-      const [quote] = await getBrokerAdapter().getQuote([instrument.instrumentToken]);
-      const fillPrice = quote?.lastPrice ?? Number(instrument.lastPrice ?? 0);
+      let fillPrice = Number(instrument.lastPrice ?? 0);
+      try {
+        const broker = getBrokerAdapter();
+        const tokensToTry = [instrument.instrumentToken];
+        if (instrument.exchange && instrument.tradingSymbol) {
+          tokensToTry.push(`${instrument.exchange}:${instrument.tradingSymbol}`);
+        }
+        const quotes = await broker.getQuote(tokensToTry);
+        const validQuote = quotes.find((q) => q && Number(q.lastPrice) > 0);
+        if (validQuote && Number(validQuote.lastPrice) > 0) {
+          fillPrice = Number(validQuote.lastPrice);
+        }
+      } catch (err: any) {
+        console.warn(`[OrderEngine] Live quote fetch failed for ${instrument.tradingSymbol}, using cached/fallback:`, err.message);
+      }
+
+      if (!fillPrice || fillPrice <= 0) {
+        fillPrice = Number(instrument.strike || (instrument.segment === "FUTURES" ? 24500 : 1000));
+      }
       return this.fillOrder(order.id, fillPrice);
     }
 

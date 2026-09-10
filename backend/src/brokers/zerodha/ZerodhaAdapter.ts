@@ -62,19 +62,24 @@ export class ZerodhaAdapter implements IBrokerAdapter {
   }
 
   async getQuote(instrumentTokens: string[]): Promise<QuoteDTO[]> {
-    const keys = instrumentTokens;
-    const quotes = await this.kc.getQuote(keys);
-    return Object.entries(quotes).map(([token, q]: [string, any]) => ({
-      instrumentToken: token,
-      tradingSymbol: q.tradingsymbol ?? token,
-      lastPrice: q.last_price,
-      open: q.ohlc?.open ?? 0,
-      high: q.ohlc?.high ?? 0,
-      low: q.ohlc?.low ?? 0,
-      close: q.ohlc?.close ?? 0,
-      volume: q.volume ?? 0,
-      timestamp: new Date().toISOString(),
-    }));
+    try {
+      const keys = instrumentTokens;
+      const quotes = await this.kc.getQuote(keys);
+      return Object.entries(quotes).map(([token, q]: [string, any]) => ({
+        instrumentToken: String(q.instrument_token || token),
+        tradingSymbol: q.tradingsymbol ?? token,
+        lastPrice: Number(q.last_price || 0),
+        open: Number(q.ohlc?.open ?? 0),
+        high: Number(q.ohlc?.high ?? 0),
+        low: Number(q.ohlc?.low ?? 0),
+        close: Number(q.ohlc?.close ?? 0),
+        volume: Number(q.volume ?? 0),
+        timestamp: new Date().toISOString(),
+      }));
+    } catch (err: any) {
+      console.warn(`[ZerodhaAdapter] getQuote failed for tokens ${instrumentTokens.join(",")}:`, err.message);
+      return [];
+    }
   }
 
   async getHistoricalData(

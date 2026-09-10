@@ -458,6 +458,20 @@ export default function Terminal() {
     return () => { s.off("tick", onTick); s.emit("unsubscribe", tokens); };
   }, [results]);
 
+  // Live prices for open positions & holdings
+  useEffect(() => {
+    const posTokens = positions.map((p) => p.instrument?.instrumentToken).filter(Boolean);
+    const holdTokens = holdings.map((h) => h.instrument?.instrumentToken).filter(Boolean);
+    const allTokens = Array.from(new Set([...posTokens, ...holdTokens]));
+    if (!allTokens.length) return;
+
+    const s = getSocket();
+    s.emit("subscribe", allTokens);
+    const onTick = (t: Tick) => setWPrices((p) => ({ ...p, [t.instrumentToken]: t.lastPrice }));
+    s.on("tick", onTick);
+    return () => { s.off("tick", onTick); };
+  }, [positions, holdings]);
+
   async function placeOrder(e: FormEvent) {
     e.preventDefault();
     if (!instrument) return;
@@ -481,7 +495,15 @@ export default function Terminal() {
   const chg    = displayLtp && displayClose ? displayLtp - displayClose : null;
   const chgPct = chg && displayClose ? (chg / displayClose) * 100 : null;
   const up     = chg !== null ? chg >= 0 : true;
-  const totalPnl    = positions.reduce((s: number, p: any) => s + Number(p.unrealisedPnl ?? p.realizedPnL ?? 0), 0);
+
+  // Real-time calculation of unrealised floating P&L on all open positions
+  const totalPnl = positions.reduce((s: number, p: any) => {
+    if (!p.quantity || p.quantity === 0) return s;
+    const curPrice = wPrices[p.instrument?.instrumentToken] ?? p.ltp ?? Number(p.instrument?.lastPrice || p.avgPrice);
+    const pnl = p.quantity * (curPrice - Number(p.avgPrice));
+    return s + pnl;
+  }, 0);
+
   const deployedPct = wallet ? Math.min(100, positions.reduce((s: number, p: any) => s + Math.abs(+p.quantity) * +(p.averagePrice ?? p.avgPrice ?? 0), 0) / wallet * 100) : 0;
   const margin      = instrument ? (+(displayLtp ?? 0) * qty * (instrument.lotSize || 1) * 0.12) : 0;
 
@@ -1005,28 +1027,41 @@ export default function Terminal() {
                     </div>
                   </div>
                   {positions.filter((p: any) => p.quantity !== 0).length === 0 ? (
-                    <div style={{ padding: "30px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+                    <div style={{ padding: "24px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
                       No open positions currently active
                     </div>
                   ) : (
                     positions.filter((p: any) => p.quantity !== 0).map((p: any, i: number) => {
-                      const pnl = Number(p.unrealisedPnl ?? p.realizedPnL ?? 0);
+                      const curPrice = wPrices[p.instrument?.instrumentToken] ?? p.ltp ?? Number(p.instrument?.lastPrice || p.avgPrice);
+                      const avgPrice = Number(p.avgPrice || p.averagePrice || 0);
+                      const pnl = p.quantity * (curPrice - avgPrice);
+                      const pnlPct = avgPrice > 0 ? ((curPrice - avgPrice) / avgPrice) * 100 * Math.sign(p.quantity) : 0;
+                      const isProfit = pnl >= 0;
+
                       return (
                         <div
-                          key={i}
-                          className={`t-pos-card ${pnl >= 0 ? "profit" : "loss"}`}
+                          key={p.id || i}
+                          className={`t-pos-card ${isProfit ? "profit" : "loss"}`}
                           onClick={() => p.instrument && setInstrument(p.instrument)}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                             <div>
                               <div className="t-pos-sym">{p.instrument?.tradingSymbol ?? "—"}</div>
-                              <div className="t-pos-meta">Qty {p.quantity} · Avg ₹{Number(p.averagePrice ?? p.avgPrice ?? 0).toFixed(2)} ({p.productType})</div>
+                              <div className="t-pos-meta">Qty {p.quantity} · Avg ₹{avgPrice.toFixed(2)} ({p.productType})</div>
                             </div>
-                            <div className={`t-pos-pnl ${pnl >= 0 ? "profit" : "loss"}`}>
-                              {pnl >= 0 ? "+" : ""}₹{Math.abs(pnl).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                            <div style={{ textAlign: "right" }}>
+                              <div className={`t-pos-pnl ${isProfit ? "profit" : "loss"}`}>
+                                {isProfit ? "+" : ""}₹{pnl.toFixed(2)}
+                              </div>
+                              <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: isProfit ? "#4ade80" : "#f87171" }}>
+                                {isProfit ? "+" : ""}{pnlPct.toFixed(2)}%
+                              </div>
                             </div>
                           </div>
-                          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6, paddingTop: 4, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, paddingTop: 4, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                            <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+                              LTP: ₹{curPrice.toFixed(2)}
+                            </span>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1049,14 +1084,70 @@ export default function Terminal() {
                       );
                     })
                   )}
+
+                  {/* Closed / Squared-off Positions */}
+                  {positions.filter((p: any) => p.quantity === 0 && Number(p.realizedPnL) !== 0).length > 0 && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+                        Closed Positions ({positions.filter((p: any) => p.quantity === 0 && Number(p.realizedPnL) !== 0).length})
+                      </div>
+                      {positions.filter((p: any) => p.quantity === 0 && Number(p.realizedPnL) !== 0).map((p: any, i: number) => {
+                        const pnl = Number(p.realizedPnL);
+                        const isProfit = pnl >= 0;
+                        return (
+                          <div
+                            key={`closed-${p.id || i}`}
+                            style={{
+                              background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)",
+                              borderRadius: 8, padding: "8px 10px", marginBottom: 6, opacity: 0.9
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: 12, color: "#f8fafc" }}>
+                                  {p.instrument?.tradingSymbol ?? "—"} <span style={{ fontSize: 10, color: "var(--text-muted)" }}>({p.productType})</span>
+                                </div>
+                                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                                  Entry: ₹{Number(p.avgPrice).toFixed(2)} · <span style={{ color: "#a5b4fc" }}>Squared Off</span>
+                                </div>
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, fontFamily: "var(--font-mono)", color: isProfit ? "#4ade80" : "#f87171" }}>
+                                  {isProfit ? "+" : ""}₹{pnl.toFixed(2)}
+                                </div>
+                                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                                  Realized
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Tab Content: HOLDINGS */}
               {sidebarTab === "holdings" && (
                 <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-                    Holdings — Delivery CNC ({holdings.length})
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      Holdings — Delivery CNC ({holdings.length})
+                    </div>
+                    {holdings.length > 0 && (() => {
+                      const totalInvested = holdings.reduce((s, h) => s + (Number(h.avgPrice || 0) * h.quantity), 0);
+                      const totalVal = holdings.reduce((s, h) => {
+                        const cp = wPrices[h.instrument?.instrumentToken] ?? h.ltp ?? Number(h.instrument?.lastPrice || h.avgPrice || 0);
+                        return s + (cp * h.quantity);
+                      }, 0);
+                      const pnl = totalVal - totalInvested;
+                      return (
+                        <div style={{ fontSize: 10, fontWeight: 800, color: pnl >= 0 ? "#4ade80" : "#f87171", background: pnl >= 0 ? "rgba(74, 222, 128, 0.1)" : "rgba(248, 113, 113, 0.1)", padding: "2px 6px", borderRadius: 4 }}>
+                          P&amp;L: {pnl >= 0 ? "+" : ""}₹{pnl.toFixed(2)}
+                        </div>
+                      );
+                    })()}
                   </div>
                   {holdings.length === 0 ? (
                     <div style={{ padding: "30px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
@@ -1067,7 +1158,7 @@ export default function Terminal() {
                     </div>
                   ) : (
                     holdings.map((h: any, i: number) => {
-                      const curPrice = wPrices[h.instrument?.instrumentToken] || Number(h.instrument?.lastPrice || h.avgPrice || 0);
+                      const curPrice = wPrices[h.instrument?.instrumentToken] ?? h.ltp ?? Number(h.instrument?.lastPrice || h.avgPrice || 0);
                       const avgPrice = Number(h.avgPrice || 0);
                       const invested = avgPrice * h.quantity;
                       const currentValue = curPrice * h.quantity;

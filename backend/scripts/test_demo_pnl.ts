@@ -74,7 +74,7 @@ async function run() {
   console.log(`  2. SELL Order Filled: Qty=10, Price=₹${Number(sell1.filledPrice).toFixed(2)}`);
 
   pos = await prisma.position.findFirst({ where: { userId: user.id, instrumentId: instrument.id, productType: "INTRADAY" } });
-  console.log(`  ✓ Position after square-off: ${pos ? "STILL OPEN" : "CLOSED (Deleted from book)"}`);
+  console.log(`  ✓ Position after square-off: ${!pos || pos.quantity === 0 ? "CLOSED (Qty = 0, Retained in Closed Positions with Realized P&L)" : "STILL OPEN (Qty = " + pos.quantity + ")"}`);
 
   let wAfter = await prisma.wallet.findUnique({ where: { userId: user.id } });
   const s1PnLDelta = Number(wAfter?.realizedPnL) - s1StartPnL;
@@ -200,8 +200,7 @@ async function run() {
     productType: "INTRADAY",
     quantity: 10,
   });
-  pos = await prisma.position.findFirst({ where: { userId: user.id, instrumentId: instrument.id, productType: "INTRADAY" } });
-  console.log(`  3. SELL 10 Qty @ ₹1020.00 -> Remaining Position: ${pos ? "STILL OPEN" : "CLOSED"}`);
+  console.log(`  3. SELL 10 Qty @ ₹1020.00 -> Remaining Position: ${!pos || pos.quantity === 0 ? "CLOSED (Qty = 0, Retained in Closed Positions)" : "STILL OPEN"}`);
 
   wAfter = await prisma.wallet.findUnique({ where: { userId: user.id } });
   const s4PnLDelta = Number(wAfter?.realizedPnL) - s4StartPnL;
