@@ -1,6 +1,7 @@
 import "express-async-errors";
 import express from "express";
 import cors from "cors";
+import bcrypt from "bcryptjs";
 import { createServer } from "http";
 import { env } from "./config/env";
 import { authRouter } from "./routes/auth.routes";
@@ -147,12 +148,32 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   res.status(err.statusCode ?? 500).json({ error: err.message ?? "Internal server error" });
 });
 
+async function ensureDbInitialized() {
+  try {
+    const adminCount = await prisma.admin.count().catch(() => 0);
+    if (adminCount === 0) {
+      const email = process.env.ADMIN_SEED_EMAIL || "admin@example.com";
+      const password = process.env.ADMIN_SEED_PASSWORD || "admin123456";
+      const name = process.env.ADMIN_SEED_NAME || "Platform Admin";
+      const passwordHash = await bcrypt.hash(password, 10);
+      await prisma.admin.create({
+        data: { email, passwordHash, name }
+      }).catch((e) => console.warn("[DB Init] Admin seed warning:", e.message));
+      console.log(`[DB Init] Created default admin: ${email}`);
+    }
+  } catch (err: any) {
+    console.warn("[DB Init] Initialization warning:", err.message);
+  }
+}
+
 const httpServer = createServer(app);
 initPriceFeedGateway(httpServer);
 startSquareOffScheduler();
 startContestSnapshotScheduler();
 
-httpServer.listen(env.PORT, () => {
-  console.log(`Backend listening on :${env.PORT} (broker=${env.BROKER_PROVIDER})`);
-  console.log(`Zerodha login URL: https://kite.zerodha.com/connect/login?api_key=${env.KITE_API_KEY}&v=3`);
+ensureDbInitialized().finally(() => {
+  httpServer.listen(env.PORT, () => {
+    console.log(`Backend listening on :${env.PORT} (broker=${env.BROKER_PROVIDER})`);
+    console.log(`Zerodha login URL: https://kite.zerodha.com/connect/login?api_key=${env.KITE_API_KEY}&v=3`);
+  });
 });

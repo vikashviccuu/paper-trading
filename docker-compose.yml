@@ -21,9 +21,22 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    env_file: ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://postgres:root@postgres:5432/paper_trading?schema=public
+      - REDIS_URL=redis://redis:6379
+      - PORT=4000
+      - APP_ENV=uat
+      - CORS_ORIGIN=https://187-127-178-25.sslip.io
+      - ZERODHA_REDIRECT_URL=https://187-127-178-25.sslip.io/admin/zerodha/callback
+      - KITE_API_KEY=jfwd2gvwal8pq0rp
+      - KITE_API_SECRET=a5j4kdo7zr2u57zfpjan8plmctdjun4t
+      - ADMIN_SEED_EMAIL=admin@example.com
+      - ADMIN_SEED_PASSWORD=admin123456
     ports:
       - "4000:4000"
 
