@@ -28,8 +28,8 @@ export class ContestEndService {
     const participants = await prisma.contestParticipant.findMany({
       where: { contestId },
       include: {
-        positions: { include: { instrument: true } },
-        holdings: { include: { instrument: true } },
+        positions: { where: { isClosed: false, quantity: { not: 0 } }, include: { instrument: true } },
+        holdings: { where: { isDeleted: false, quantity: { gt: 0 } }, include: { instrument: true } },
       },
     });
 
@@ -57,7 +57,16 @@ export class ContestEndService {
         const marginBlocked = Number(pos.marginBlocked);
 
         await prisma.$transaction([
-          prisma.contestPosition.delete({ where: { id: pos.id } }),
+          prisma.contestPosition.update({
+            where: { id: pos.id },
+            data: {
+              quantity: 0,
+              marginBlocked: 0,
+              isClosed: true,
+              closedAt: new Date(),
+              realizedPnL: { increment: realizedPnL },
+            },
+          }),
           prisma.contestParticipant.update({
             where: { id: participant.id },
             data: {
@@ -90,7 +99,14 @@ export class ContestEndService {
         const realizedPnL = direction * Math.abs(holding.quantity) * (ltp - Number(holding.avgPrice));
 
         await prisma.$transaction([
-          prisma.contestHolding.delete({ where: { id: holding.id } }),
+          prisma.contestHolding.update({
+            where: { id: holding.id },
+            data: {
+              quantity: 0,
+              isDeleted: true,
+              deletedAt: new Date(),
+            },
+          }),
           prisma.contestParticipant.update({
             where: { id: participant.id },
             data: {

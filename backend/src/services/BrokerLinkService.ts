@@ -31,7 +31,7 @@ export interface LinkBrokerInput {
 export class BrokerLinkService {
   async list(userId: string) {
     return prisma.brokerLink.findMany({
-      where: { userId },
+      where: { userId, isDeleted: false },
       select: { id: true, provider: true, nickname: true, createdAt: true }, // never return accessToken/refreshToken to the client
       orderBy: { createdAt: "asc" },
     });
@@ -47,14 +47,14 @@ export class BrokerLinkService {
 
     const link = await prisma.brokerLink.upsert({
       where: { userId_provider: { userId, provider: input.provider } },
-      update: { accessToken: input.accessToken, nickname: input.nickname },
-      create: { userId, provider: input.provider, accessToken: input.accessToken, nickname: input.nickname },
+      update: { accessToken: input.accessToken, nickname: input.nickname, isDeleted: false, deletedAt: null },
+      create: { userId, provider: input.provider, accessToken: input.accessToken, nickname: input.nickname, isDeleted: false, deletedAt: null },
     });
     return { id: link.id, provider: link.provider, nickname: link.nickname, createdAt: link.createdAt };
   }
 
   async unlink(userId: string, linkId: string) {
-    const link = await prisma.brokerLink.findFirst({ where: { id: linkId, userId } });
+    const link = await prisma.brokerLink.findFirst({ where: { id: linkId, userId, isDeleted: false } });
     if (!link) throw new AppError(404, "Broker link not found");
 
     const liveAccount = await prisma.liveTradingAccount.findUnique({ where: { userId } });
@@ -62,12 +62,16 @@ export class BrokerLinkService {
       throw new AppError(400, "Disable Live Trading before unlinking the broker it's using");
     }
 
-    await prisma.brokerLink.delete({ where: { id: linkId } });
+    // Soft delete broker link - NEVER HARD DELETE
+    await prisma.brokerLink.update({
+      where: { id: linkId },
+      data: { isDeleted: true, deletedAt: new Date(), accessToken: null, refreshToken: null },
+    });
   }
 
   /** Internal helper for LiveOrderService/LiveTradingAccountService - never expose accessToken over the API. */
   async getForLiveTrading(userId: string, linkId: string) {
-    const link = await prisma.brokerLink.findFirst({ where: { id: linkId, userId } });
+    const link = await prisma.brokerLink.findFirst({ where: { id: linkId, userId, isDeleted: false } });
     if (!link) throw new AppError(404, "Broker link not found");
     if (!link.accessToken) throw new AppError(400, "This broker link has no access token - relink it");
     return link;

@@ -46,7 +46,10 @@ export class PrizeService {
       where: { id: contestId },
       select: { id: true, totalPrizePool: true, prizesComputedAt: true },
     });
-    const slabs = await prisma.contestPrizeSlab.findMany({ where: { contestId }, orderBy: { rankFrom: "asc" } });
+    const slabs = await prisma.contestPrizeSlab.findMany({
+      where: { contestId, isDeleted: false },
+      orderBy: { rankFrom: "asc" },
+    });
     return { totalPrizePool: contest.totalPrizePool, prizesComputedAt: contest.prizesComputedAt, slabs };
   }
 
@@ -60,11 +63,22 @@ export class PrizeService {
 
     await prisma.$transaction([
       prisma.contest.update({ where: { id: contestId }, data: { totalPrizePool } }),
-      prisma.contestPrizeSlab.deleteMany({ where: { contestId } }),
+      // Soft-archive existing slabs - NEVER HARD DELETE
+      prisma.contestPrizeSlab.updateMany({
+        where: { contestId, isDeleted: false },
+        data: { isDeleted: true, deletedAt: new Date() },
+      }),
       ...(slabs.length > 0
         ? [
             prisma.contestPrizeSlab.createMany({
-              data: slabs.map((s) => ({ contestId, rankFrom: s.rankFrom, rankTo: s.rankTo, percentage: s.percentage })),
+              data: slabs.map((s) => ({
+                contestId,
+                rankFrom: s.rankFrom,
+                rankTo: s.rankTo,
+                percentage: s.percentage,
+                isDeleted: false,
+                deletedAt: null,
+              })),
             }),
           ]
         : []),

@@ -18,16 +18,34 @@ export interface AddBankAccountInput {
  */
 export class BankAccountService {
   async list(userId: string) {
-    return prisma.bankAccount.findMany({ where: { userId }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] });
+    return prisma.bankAccount.findMany({
+      where: { userId, isDeleted: false },
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    });
   }
 
   async add(userId: string, input: AddBankAccountInput) {
     const existing = await prisma.bankAccount.findUnique({
       where: { userId_accountNumber_ifsc: { userId, accountNumber: input.accountNumber, ifsc: input.ifsc.toUpperCase() } },
     });
-    if (existing) throw new AppError(409, "This bank account is already on your profile");
+    if (existing) {
+      if (!existing.isDeleted) {
+        throw new AppError(409, "This bank account is already on your profile");
+      }
+      // If previously soft-deleted, reactivate it and re-verify
+      await prisma.bankAccount.update({
+        where: { id: existing.id },
+        data: {
+          accountHolderName: input.accountHolderName,
+          isDeleted: false,
+          deletedAt: null,
+          verificationStatus: "PENDING",
+        },
+      });
+      return this.verify(userId, existing.id);
+    }
 
-    const isFirst = (await prisma.bankAccount.count({ where: { userId } })) === 0;
+    const isFirst = (await prisma.bankAccount.count({ where: { userId, isDeleted: false } })) === 0;
 
     const account = await prisma.bankAccount.create({
       data: {
@@ -37,6 +55,8 @@ export class BankAccountService {
         ifsc: input.ifsc.toUpperCase(),
         isPrimary: isFirst,
         verificationStatus: "PENDING",
+        isDeleted: false,
+        deletedAt: null,
       },
     });
 
@@ -44,7 +64,7 @@ export class BankAccountService {
   }
 
   async verify(userId: string, accountId: string) {
-    const account = await prisma.bankAccount.findFirst({ where: { id: accountId, userId } });
+    const account = await prisma.bankAccount.findFirst({ where: { id: accountId, userId, isDeleted: false } });
     if (!account) throw new AppError(404, "Bank account not found");
 
     const provider = getKycProvider();
@@ -72,7 +92,7 @@ export class BankAccountService {
   }
 
   async setPrimary(userId: string, accountId: string) {
-    const account = await prisma.bankAccount.findFirst({ where: { id: accountId, userId } });
+    const account = await prisma.bankAccount.findFirst({ where: { id: accountId, userId, isDeleted: false } });
     if (!account) throw new AppError(404, "Bank account not found");
     if (account.verificationStatus !== "VERIFIED") {
       throw new AppError(400, "Only a verified bank account can be set as primary");
@@ -86,9 +106,13 @@ export class BankAccountService {
   }
 
   async remove(userId: string, accountId: string) {
-    const account = await prisma.bankAccount.findFirst({ where: { id: accountId, userId } });
+    const account = await prisma.bankAccount.findFirst({ where: { id: accountId, userId, isDeleted: false } });
     if (!account) throw new AppError(404, "Bank account not found");
-    await prisma.bankAccount.delete({ where: { id: accountId } });
+    // Soft delete bank account - NEVER HARD DELETE
+    await prisma.bankAccount.update({
+      where: { id: accountId },
+      data: { isDeleted: true, deletedAt: new Date(), isPrimary: false },
+    });
   }
 }
 

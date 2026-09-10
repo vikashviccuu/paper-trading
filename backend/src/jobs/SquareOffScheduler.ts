@@ -23,7 +23,7 @@ export function startSquareOffScheduler() {
 
 export async function squareOffAllIntraday() {
   const positions = await prisma.position.findMany({
-    where: { productType: "INTRADAY" },
+    where: { productType: "INTRADAY", isClosed: false, quantity: { not: 0 } },
     include: { instrument: true },
   });
   if (positions.length === 0) return;
@@ -37,7 +37,16 @@ export async function squareOffAllIntraday() {
     const realizedPnL = direction * Math.abs(pos.quantity) * (ltp - Number(pos.avgPrice));
 
     await prisma.$transaction([
-      prisma.position.delete({ where: { id: pos.id } }),
+      prisma.position.update({
+        where: { id: pos.id },
+        data: {
+          quantity: 0,
+          marginBlocked: 0,
+          isClosed: true,
+          closedAt: new Date(),
+          realizedPnL: { increment: realizedPnL },
+        },
+      }),
       prisma.wallet.update({
         where: { userId: pos.userId },
         data: {

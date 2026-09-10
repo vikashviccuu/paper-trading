@@ -135,8 +135,8 @@ export default function Portfolio() {
 
   const { wallet, positions = [], holdings = [], summary } = data;
   const pnl = Number(wallet.realizedPnL || 0);
-  const openPositions = positions.filter((p: any) => p.quantity !== 0);
-  const closedPositions = positions.filter((p: any) => p.quantity === 0 && Number(p.realizedPnL) !== 0);
+  const openPositions = positions.filter((p: any) => p.quantity !== 0 && !p.isClosed);
+  const closedPositions = positions.filter((p: any) => (p.quantity === 0 || p.isClosed) && Number(p.realizedPnL) !== 0);
   const totalUnrealised = Number(summary?.totalUnrealisedPnL ?? openPositions.reduce((s: number, p: any) => s + Number(p.unrealisedPnL || 0), 0));
 
   return (

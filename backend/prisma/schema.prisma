@@ -160,6 +160,8 @@ model User {
   name          String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  isDeleted     Boolean  @default(false)
+  deletedAt     DateTime?
 
   wallet             Wallet?
   orders             Order[]
@@ -213,6 +215,8 @@ model BrokerLink {
   refreshToken String?
   meta         Json?
   createdAt    DateTime @default(now())
+  isDeleted    Boolean  @default(false)
+  deletedAt    DateTime?
 
   liveTradingAccounts LiveTradingAccount[]
   liveOrders          LiveOrder[]
@@ -299,6 +303,8 @@ model Position {
   marginBlocked  Decimal     @default(0) @db.Decimal(18, 2)
   openedAt       DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  isClosed       Boolean     @default(false)
+  closedAt       DateTime?
 
   @@unique([userId, instrumentId, productType])
 }
@@ -313,17 +319,21 @@ model Holding {
   quantity      Int
   avgPrice      Decimal    @db.Decimal(18, 2)
   updatedAt     DateTime   @updatedAt
+  isDeleted     Boolean    @default(false)
+  deletedAt     DateTime?
 
   @@unique([userId, instrumentId])
 }
 
 model Watchlist {
-  id     String   @id @default(uuid())
-  userId String
-  user   User     @relation(fields: [userId], references: [id])
-  name   String   @default("My Watchlist")
-  symbols Json    // array of instrumentToken strings
-  createdAt DateTime @default(now())
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  name      String    @default("My Watchlist")
+  symbols   Json      // array of instrumentToken strings
+  createdAt DateTime  @default(now())
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +369,8 @@ model Contest {
   createdByAdmin      Admin               @relation(fields: [createdByAdminId], references: [id])
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
+  isDeleted           Boolean             @default(false)
+  deletedAt           DateTime?
 
   // Set once ContestEndService has liquidated every participant's open
   // positions/holdings at contest close - guards against the scheduler
@@ -427,6 +439,8 @@ model ContestPosition {
   marginBlocked         Decimal             @default(0) @db.Decimal(18, 2)
   openedAt              DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
+  isClosed              Boolean             @default(false)
+  closedAt              DateTime?
 
   @@unique([contestParticipantId, instrumentId, productType])
 }
@@ -440,6 +454,8 @@ model ContestHolding {
   quantity             Int
   avgPrice             Decimal            @db.Decimal(18, 2)
   updatedAt            DateTime           @updatedAt
+  isDeleted            Boolean            @default(false)
+  deletedAt            DateTime?
 
   @@unique([contestParticipantId, instrumentId])
 }
@@ -473,12 +489,14 @@ model ContestPortfolioSnapshot {
 // between them". Slabs need not cover every participant - unlisted ranks get
 // no prize. Validated (in PrizeService) to not overlap and to sum to <= 100%.
 model ContestPrizeSlab {
-  id         String  @id @default(uuid())
+  id         String    @id @default(uuid())
   contestId  String
-  contest    Contest @relation(fields: [contestId], references: [id])
+  contest    Contest   @relation(fields: [contestId], references: [id])
   rankFrom   Int
   rankTo     Int
-  percentage Float // % of Contest.totalPrizePool allocated to this slab
+  percentage Float     // % of Contest.totalPrizePool allocated to this slab
+  isDeleted  Boolean   @default(false)
+  deletedAt  DateTime?
 
   @@index([contestId])
 }
@@ -757,6 +775,8 @@ model BankAccount {
   nameMatchResult   String? // e.g. MATCH | PARTIAL_MATCH | NO_MATCH
   verifiedAt        DateTime?
   createdAt         DateTime                @default(now())
+  isDeleted         Boolean                 @default(false)
+  deletedAt         DateTime?
 
   @@unique([userId, accountNumber, ifsc])
 }

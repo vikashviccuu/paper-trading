@@ -75,8 +75,8 @@ export class OrderEngine {
       const holding = await prisma.holding.findUnique({
         where: { userId_instrumentId: { userId: input.userId, instrumentId: input.instrumentId } },
       });
-      if (!holding || holding.quantity < input.quantity) {
-        throw new AppError(400, `Insufficient holdings to sell. You have ${holding?.quantity ?? 0} shares. For short selling, use Product: MIS (Intraday).`);
+      if (!holding || holding.isDeleted || holding.quantity < input.quantity) {
+        throw new AppError(400, `Insufficient holdings to sell. You have ${holding && !holding.isDeleted ? holding.quantity : 0} shares. For short selling, use Product: MIS (Intraday).`);
       }
     }
 

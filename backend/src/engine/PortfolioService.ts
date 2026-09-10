@@ -119,7 +119,7 @@ export class PortfolioService {
       const newAvg = (Math.abs(existingQty) * existingAvg + Math.abs(signedQty) * fillPrice) / Math.abs(newQty);
       await prisma.position.update({
         where: { id: existing.id },
-        data: { quantity: newQty, avgPrice: new Prisma.Decimal(newAvg) },
+        data: { quantity: newQty, avgPrice: new Prisma.Decimal(newAvg), isClosed: false, closedAt: null },
       });
       return { realizedPnL: 0 };
     }
@@ -131,7 +131,7 @@ export class PortfolioService {
 
     const remainder = existingQty + signedQty; // could flip sign if signedQty overshoots
     if (remainder === 0) {
-      // Mark closed with quantity 0, retain realizedPnL for position tracking
+      // Mark closed with quantity 0, retain realizedPnL for position tracking - NEVER HARD DELETE
       await prisma.position.update({
         where: { id: existing.id },
         data: {
@@ -139,6 +139,8 @@ export class PortfolioService {
           avgPrice: new Prisma.Decimal(existingAvg),
           realizedPnL: { increment: realizedPnL },
           marginBlocked: 0,
+          isClosed: true,
+          closedAt: new Date(),
         },
       });
     } else {
@@ -149,6 +151,8 @@ export class PortfolioService {
           quantity: remainder,
           avgPrice: new Prisma.Decimal(flipped ? fillPrice : existingAvg),
           realizedPnL: { increment: realizedPnL },
+          isClosed: false,
+          closedAt: null,
         },
       });
     }
@@ -167,7 +171,28 @@ export class PortfolioService {
 
     if (!existing) {
       await prisma.holding.create({
-        data: { userId, instrumentId, quantity: signedQty, avgPrice: new Prisma.Decimal(fillPrice) },
+        data: {
+          userId,
+          instrumentId,
+          quantity: signedQty,
+          avgPrice: new Prisma.Decimal(fillPrice),
+          isDeleted: false,
+          deletedAt: null,
+        },
+      });
+      return { realizedPnL: 0 };
+    }
+
+    // If holding previously had 0 shares or was soft-deleted, reactivate it with new buy
+    if (existing.isDeleted || existing.quantity === 0) {
+      await prisma.holding.update({
+        where: { id: existing.id },
+        data: {
+          quantity: signedQty,
+          avgPrice: new Prisma.Decimal(fillPrice),
+          isDeleted: false,
+          deletedAt: null,
+        },
       });
       return { realizedPnL: 0 };
     }
@@ -180,7 +205,7 @@ export class PortfolioService {
       const newAvg = (Math.abs(existingQty) * existingAvg + Math.abs(signedQty) * fillPrice) / Math.abs(newQty);
       await prisma.holding.update({
         where: { id: existing.id },
-        data: { quantity: newQty, avgPrice: new Prisma.Decimal(newAvg) },
+        data: { quantity: newQty, avgPrice: new Prisma.Decimal(newAvg), isDeleted: false, deletedAt: null },
       });
       return { realizedPnL: 0 };
     }
@@ -191,11 +216,15 @@ export class PortfolioService {
     const remainder = existingQty + signedQty;
 
     if (remainder === 0) {
-      await prisma.holding.delete({ where: { id: existing.id } });
+      // Retain holding record with quantity 0 and isDeleted = true - NEVER HARD DELETE
+      await prisma.holding.update({
+        where: { id: existing.id },
+        data: { quantity: 0, isDeleted: true, deletedAt: new Date() },
+      });
     } else {
       await prisma.holding.update({
         where: { id: existing.id },
-        data: { quantity: remainder, avgPrice: new Prisma.Decimal(existingAvg) },
+        data: { quantity: remainder, avgPrice: new Prisma.Decimal(existingAvg), isDeleted: false, deletedAt: null },
       });
     }
     return { realizedPnL };
@@ -210,7 +239,7 @@ export class PortfolioService {
         orderBy: { updatedAt: "desc" },
       }),
       prisma.holding.findMany({
-        where: { userId },
+        where: { userId, isDeleted: false, quantity: { gt: 0 } },
         include: { instrument: true },
         orderBy: { updatedAt: "desc" },
       }),

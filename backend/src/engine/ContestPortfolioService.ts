@@ -96,7 +96,18 @@ export class ContestPortfolioService {
     const remainder = existingQty + signedQty;
 
     if (remainder === 0) {
-      await prisma.contestPosition.delete({ where: { id: existing.id } });
+      // Retain closed contest position with quantity 0 - NEVER HARD DELETE
+      await prisma.contestPosition.update({
+        where: { id: existing.id },
+        data: {
+          quantity: 0,
+          avgPrice: new Prisma.Decimal(existingAvg),
+          realizedPnL: { increment: realizedPnL },
+          marginBlocked: 0,
+          isClosed: true,
+          closedAt: new Date(),
+        },
+      });
     } else {
       const flipped = Math.sign(remainder) !== Math.sign(existingQty);
       await prisma.contestPosition.update({
@@ -105,6 +116,8 @@ export class ContestPortfolioService {
           quantity: remainder,
           avgPrice: new Prisma.Decimal(flipped ? fillPrice : existingAvg),
           realizedPnL: { increment: realizedPnL },
+          isClosed: false,
+          closedAt: null,
         },
       });
     }
@@ -123,7 +136,28 @@ export class ContestPortfolioService {
 
     if (!existing) {
       await prisma.contestHolding.create({
-        data: { contestParticipantId, instrumentId, quantity: signedQty, avgPrice: new Prisma.Decimal(fillPrice) },
+        data: {
+          contestParticipantId,
+          instrumentId,
+          quantity: signedQty,
+          avgPrice: new Prisma.Decimal(fillPrice),
+          isDeleted: false,
+          deletedAt: null,
+        },
+      });
+      return { realizedPnL: 0 };
+    }
+
+    // Reactivate soft-deleted or 0-quantity holding
+    if (existing.isDeleted || existing.quantity === 0) {
+      await prisma.contestHolding.update({
+        where: { id: existing.id },
+        data: {
+          quantity: signedQty,
+          avgPrice: new Prisma.Decimal(fillPrice),
+          isDeleted: false,
+          deletedAt: null,
+        },
       });
       return { realizedPnL: 0 };
     }
@@ -136,7 +170,7 @@ export class ContestPortfolioService {
       const newAvg = (Math.abs(existingQty) * existingAvg + Math.abs(signedQty) * fillPrice) / Math.abs(newQty);
       await prisma.contestHolding.update({
         where: { id: existing.id },
-        data: { quantity: newQty, avgPrice: new Prisma.Decimal(newAvg) },
+        data: { quantity: newQty, avgPrice: new Prisma.Decimal(newAvg), isDeleted: false, deletedAt: null },
       });
       return { realizedPnL: 0 };
     }
@@ -147,11 +181,15 @@ export class ContestPortfolioService {
     const remainder = existingQty + signedQty;
 
     if (remainder === 0) {
-      await prisma.contestHolding.delete({ where: { id: existing.id } });
+      // Retain holding record with quantity 0 and isDeleted = true - NEVER HARD DELETE
+      await prisma.contestHolding.update({
+        where: { id: existing.id },
+        data: { quantity: 0, isDeleted: true, deletedAt: new Date() },
+      });
     } else {
       await prisma.contestHolding.update({
         where: { id: existing.id },
-        data: { quantity: remainder, avgPrice: new Prisma.Decimal(existingAvg) },
+        data: { quantity: remainder, avgPrice: new Prisma.Decimal(existingAvg), isDeleted: false, deletedAt: null },
       });
     }
     return { realizedPnL };
@@ -160,8 +198,14 @@ export class ContestPortfolioService {
   async getPortfolioSnapshot(contestParticipantId: string) {
     const [participant, positions, holdings] = await Promise.all([
       prisma.contestParticipant.findUnique({ where: { id: contestParticipantId } }),
-      prisma.contestPosition.findMany({ where: { contestParticipantId }, include: { instrument: true } }),
-      prisma.contestHolding.findMany({ where: { contestParticipantId }, include: { instrument: true } }),
+      prisma.contestPosition.findMany({
+        where: { contestParticipantId, isClosed: false, quantity: { not: 0 } },
+        include: { instrument: true },
+      }),
+      prisma.contestHolding.findMany({
+        where: { contestParticipantId, isDeleted: false, quantity: { gt: 0 } },
+        include: { instrument: true },
+      }),
     ]);
     return { participant, positions, holdings };
   }
