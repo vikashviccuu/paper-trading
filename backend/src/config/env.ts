@@ -160,5 +160,8 @@ export const env = {
   MSG91_TOKEN: req("MSG91_TOKEN", "570228TxAclE2n6aa42b5dP1"),
   MSG91_WIDGET_ID: req("MSG91_WIDGET_ID", "SecureOTPWidget2KQL"),
   MSG91_TEMPLATE_ID: req("MSG91_TEMPLATE_ID", "SecureOTPWidget2KQL"),
+
+  // ---- Test Mode Demo Codes ----
+  ENABLE_DEMO_OTP: req("ENABLE_DEMO_OTP", "true") === "true",
 };
 

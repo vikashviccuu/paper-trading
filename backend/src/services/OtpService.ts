@@ -32,7 +32,7 @@ export class OtpService {
       }
     }
 
-    return { otp: env.NODE_ENV === "production" ? undefined : otp, expiresAt };
+    return { otp: env.ENABLE_DEMO_OTP ? otp : undefined, expiresAt };
   }
 
 
