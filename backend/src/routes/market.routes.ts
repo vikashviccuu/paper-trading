@@ -57,11 +57,118 @@ marketRouter.post("/sync-instruments", async (_req, res) => {
   }
 });
 
+function parseRequestedInstruments(req: any): string[] {
+  let list: string[] = [];
+  if (req.query.i) {
+    if (Array.isArray(req.query.i)) {
+      list.push(...(req.query.i as string[]).map(String));
+    } else {
+      list.push(...String(req.query.i).split(","));
+    }
+  }
+  if (req.query.tokens) {
+    list.push(...String(req.query.tokens).split(","));
+  }
+  if (req.query.q) {
+    list.push(...String(req.query.q).split(","));
+  }
+  return Array.from(new Set(list.map((s) => s.trim()).filter(Boolean)));
+}
+
+/** Full Market Quotes API per Kite Connect spec (https://kite.trade/docs/connect/v3/market-quotes/#market-quotes) */
 marketRouter.get("/quote", async (req, res) => {
-  const tokens = ((req.query.tokens as string) || "").split(",").filter(Boolean);
-  if (tokens.length === 0) return res.status(400).json({ error: "tokens query param required" });
-  const quotes = await getBrokerAdapter().getQuote(tokens);
+  const instruments = parseRequestedInstruments(req);
+  if (instruments.length === 0) {
+    return res.status(400).json({ error: "Missing query parameters. Use ?i=EXCHANGE:TRADINGSYMBOL or ?tokens=TOKEN1,TOKEN2" });
+  }
+
+  const quotes = await getBrokerAdapter().getQuote(instruments);
+
+  // If called using Kite Connect parameter (?i=...) or header or ?mode=kite, return Kite standard envelope
+  if (req.query.i || req.query.mode === "kite" || req.headers["x-kite-version"]) {
+    const data: Record<string, any> = {};
+    for (const q of quotes) {
+      const sym = q.tradingSymbol || q.instrumentToken;
+      const key = sym.includes(":") ? sym : `NSE:${sym}`;
+      data[key] = {
+        instrument_token: Number(q.instrumentToken) || q.instrumentToken,
+        timestamp: q.timestamp,
+        last_trade_time: q.lastTradeTime || q.timestamp,
+        last_price: q.lastPrice,
+        last_quantity: q.lastQuantity || 1,
+        buy_quantity: q.buyQuantity || 0,
+        sell_quantity: q.sellQuantity || 0,
+        volume: q.volume,
+        average_price: q.averagePrice || q.lastPrice,
+        oi: q.oi || 0,
+        oi_day_high: q.oiDayHigh || 0,
+        oi_day_low: q.oiDayLow || 0,
+        net_change: q.netChange || 0,
+        ohlc: {
+          open: q.open,
+          high: q.high,
+          low: q.low,
+          close: q.close,
+        },
+        lower_circuit_limit: q.lowerCircuitLimit || 0,
+        upper_circuit_limit: q.upperCircuitLimit || 0,
+        depth: q.depth || { buy: [], sell: [] },
+      };
+      data[q.instrumentToken] = data[key];
+    }
+    return res.json({ status: "success", data });
+  }
+
+  // Standard platform REST array response
   res.json(quotes);
+});
+
+/** Quote OHLC only per Kite Connect spec: GET /quote/ohlc?i=EXCHANGE:TRADINGSYMBOL */
+marketRouter.get("/quote/ohlc", async (req, res) => {
+  const instruments = parseRequestedInstruments(req);
+  if (instruments.length === 0) {
+    return res.status(400).json({ error: "i query param required (e.g. ?i=NSE:RELIANCE)" });
+  }
+
+  const quotes = await getBrokerAdapter().getQuote(instruments);
+  const data: Record<string, any> = {};
+  for (const q of quotes) {
+    const sym = q.tradingSymbol || q.instrumentToken;
+    const key = sym.includes(":") ? sym : `NSE:${sym}`;
+    data[key] = {
+      instrument_token: Number(q.instrumentToken) || q.instrumentToken,
+      last_price: q.lastPrice,
+      ohlc: {
+        open: q.open,
+        high: q.high,
+        low: q.low,
+        close: q.close,
+      },
+    };
+    data[q.instrumentToken] = data[key];
+  }
+  res.json({ status: "success", data });
+});
+
+/** Quote LTP only per Kite Connect spec: GET /quote/ltp?i=EXCHANGE:TRADINGSYMBOL */
+marketRouter.get("/quote/ltp", async (req, res) => {
+  const instruments = parseRequestedInstruments(req);
+  if (instruments.length === 0) {
+    return res.status(400).json({ error: "i query param required (e.g. ?i=NSE:RELIANCE)" });
+  }
+
+  const quotes = await getBrokerAdapter().getQuote(instruments);
+  const data: Record<string, any> = {};
+  for (const q of quotes) {
+    const sym = q.tradingSymbol || q.instrumentToken;
+    const key = sym.includes(":") ? sym : `NSE:${sym}`;
+    data[key] = {
+      instrument_token: Number(q.instrumentToken) || q.instrumentToken,
+      last_price: q.lastPrice,
+    };
+    data[q.instrumentToken] = data[key];
+  }
+  res.json({ status: "success", data });
 });
 
 marketRouter.get("/history", async (req, res) => {

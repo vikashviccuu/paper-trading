@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, FormEvent } from "react";
 import { useLocation, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { createChart, IChartApi, ISeriesApi, CandlestickData } from "lightweight-charts";
-import { Instrument, MarketAPI, OrdersAPI, PortfolioAPI, api } from "../services/api";
+import { Instrument, MarketAPI, OrdersAPI, PortfolioAPI, api, FullMarketQuote } from "../services/api";
 import { getSocket, Tick } from "../services/socket";
 
 const INDICES = [
@@ -186,6 +186,114 @@ function LiveChart({ instrument, bars, timeframe }: { instrument: Instrument; ba
   }, [instrument.instrumentToken, timeframe]);
 
   return <div ref={ref} style={{ width: "100%", height: "100%" }} />;
+}
+
+// ── Market Depth Card (Level 2 Quotes per Kite Connect specification) ──
+function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null; instrument: Instrument | null }) {
+  if (!quote || !instrument) return null;
+
+  const buyLevels = quote.depth?.buy || [];
+  const sellLevels = quote.depth?.sell || [];
+  const totalBuyQty = quote.buyQuantity || buyLevels.reduce((acc, b) => acc + (b.quantity || 0), 0);
+  const totalSellQty = quote.sellQuantity || sellLevels.reduce((acc, s) => acc + (s.quantity || 0), 0);
+
+  return (
+    <div style={{
+      background: "rgba(15, 23, 42, 0.75)",
+      border: "1px solid rgba(255, 255, 255, 0.08)",
+      borderRadius: 10,
+      padding: "12px 14px",
+      marginBottom: 16,
+      boxShadow: "0 4px 20px rgba(0, 0, 0, 0.35)",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid rgba(255, 255, 255, 0.07)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Market Depth (5 Levels)
+          </span>
+          <span style={{ fontSize: 9, background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>
+            LIVE
+          </span>
+        </div>
+        <div style={{ fontSize: 11, color: "#64748b" }}>
+          Vol: <span style={{ color: "#f8fafc", fontWeight: 700 }}>{(quote.volume || 0).toLocaleString("en-IN")}</span>
+        </div>
+      </div>
+
+      {/* 5-Level Depth Columns */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {/* BUY BIDS */}
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#38bdf8", marginBottom: 4, paddingBottom: 2, borderBottom: "1px dashed rgba(56, 189, 248, 0.25)" }}>
+            <span>Orders</span>
+            <span>Qty</span>
+            <span>Bid</span>
+          </div>
+          {buyLevels.slice(0, 5).map((b, idx) => (
+            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: "#e2e8f0" }}>
+              <span style={{ color: "#64748b", fontSize: 10 }}>{b.orders || 1}</span>
+              <span>{(b.quantity || 0).toLocaleString("en-IN")}</span>
+              <span style={{ color: "#38bdf8", fontWeight: 700 }}>₹{Number(b.price || 0).toFixed(2)}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#38bdf8", marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+            <span>Total</span>
+            <span>{totalBuyQty.toLocaleString("en-IN")}</span>
+            <span />
+          </div>
+        </div>
+
+        {/* SELL ASKS */}
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#f87171", marginBottom: 4, paddingBottom: 2, borderBottom: "1px dashed rgba(248, 113, 113, 0.25)" }}>
+            <span>Offer</span>
+            <span>Qty</span>
+            <span>Orders</span>
+          </div>
+          {sellLevels.slice(0, 5).map((s, idx) => (
+            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: "#e2e8f0" }}>
+              <span style={{ color: "#f87171", fontWeight: 700 }}>₹{Number(s.price || 0).toFixed(2)}</span>
+              <span>{(s.quantity || 0).toLocaleString("en-IN")}</span>
+              <span style={{ color: "#64748b", fontSize: 10 }}>{s.orders || 1}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#f87171", marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+            <span />
+            <span>{totalSellQty.toLocaleString("en-IN")}</span>
+            <span>Total</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats summary: VWAP, Circuit Limits, OI */}
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.07)", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, textAlign: "center" }}>
+        <div>
+          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>VWAP / Avg</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#f8fafc", fontFamily: "var(--font-mono)" }}>
+            ₹{Number(quote.averagePrice || quote.lastPrice || 0).toFixed(2)}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Lower Limit</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
+            ₹{Number(quote.lowerCircuitLimit || (quote.close * 0.9)).toFixed(2)}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Upper Limit</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
+            ₹{Number(quote.upperCircuitLimit || (quote.close * 1.1)).toFixed(2)}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Open Interest</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", fontFamily: "var(--font-mono)" }}>
+            {quote.oi ? quote.oi.toLocaleString("en-IN") : "—"}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Main terminal ────────────────────────────────────────────
@@ -381,16 +489,13 @@ export default function Terminal() {
     OrdersAPI.list().then((r) => setOrders(r.data ?? [])).catch(() => {});
   }, [msg]);
 
-  // REST quote for OHLC chip — fires once per instrument selection
+  // REST quote for OHLC chip and Market Depth — fires once per instrument selection
   useEffect(() => {
     if (!instrument) return;
     setQuote(null);
-    api.get("/broker/zerodha/live-quotes")
+    MarketAPI.quote([instrument.instrumentToken])
       .then((r) => {
-        const found = (r.data as any[]).find((q) =>
-          q.symbol === `${instrument.exchange}:${instrument.tradingSymbol}` ||
-          String(q.instrumentToken) === instrument.instrumentToken
-        );
+        const found = r.data?.[0];
         if (found) {
           setQuote(found);
           if (!ltp) setLtp(found.lastPrice);
@@ -1451,7 +1556,10 @@ export default function Terminal() {
             </form>
           </div>
 
-
+          {/* 5-Level Market Depth & Quotes */}
+          {instrument && quote && (
+            <MarketDepthCard quote={quote} instrument={instrument} />
+          )}
 
           {/* Competition rank */}
           <div className="t-rank">

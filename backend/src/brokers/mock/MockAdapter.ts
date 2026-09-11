@@ -49,15 +49,48 @@ export class MockAdapter implements IBrokerAdapter {
 
   async getQuote(instrumentTokens: string[]): Promise<QuoteDTO[]> {
     return instrumentTokens.map((token) => {
-      const base = this.prices.get(token) ?? MockAdapter.SEED_PRICES[token] ?? 1000;
+      const base = round2(this.prices.get(token) ?? MockAdapter.SEED_PRICES[token] ?? 1000);
+      const open = round2(base * 0.99);
+      const high = round2(base * 1.01);
+      const low = round2(base * 0.98);
+      const close = round2(base * 0.995);
+      const netChange = round2(base - close);
+      const changePercent = close > 0 ? round2((netChange / close) * 100) : 0;
+      const spread = Math.max(round2(base * 0.0005), 0.05);
+
       return {
         instrumentToken: token,
-        lastPrice: round2(base),
-        open: round2(base * 0.99),
-        high: round2(base * 1.01),
-        low: round2(base * 0.98),
-        close: round2(base * 0.995),
+        tradingSymbol: token.includes(":") ? token.split(":")[1] : token,
+        lastPrice: base,
+        lastQuantity: Math.floor(1 + Math.random() * 50),
+        lastTradeTime: new Date().toISOString(),
+        averagePrice: round2((open + high + low + base) / 4),
+        open,
+        high,
+        low,
+        close,
         volume: Math.floor(Math.random() * 1_000_000),
+        buyQuantity: 50000 + Math.floor(Math.random() * 20000),
+        sellQuantity: 48000 + Math.floor(Math.random() * 20000),
+        netChange,
+        changePercent,
+        oi: 120000,
+        oiDayHigh: 150000,
+        oiDayLow: 95000,
+        lowerCircuitLimit: round2(close * 0.9),
+        upperCircuitLimit: round2(close * 1.1),
+        depth: {
+          buy: [1, 2, 3, 4, 5].map((lvl) => ({
+            price: round2(base - lvl * spread),
+            quantity: Math.floor(100 + Math.random() * 500),
+            orders: Math.floor(1 + Math.random() * 6),
+          })),
+          sell: [1, 2, 3, 4, 5].map((lvl) => ({
+            price: round2(base + lvl * spread),
+            quantity: Math.floor(100 + Math.random() * 500),
+            orders: Math.floor(1 + Math.random() * 6),
+          })),
+        },
         timestamp: new Date().toISOString(),
       };
     });

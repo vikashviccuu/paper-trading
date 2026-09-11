@@ -24,9 +24,48 @@ export const AuthAPI = {
   login: (email: string, password: string) => api.post("/auth/login", { email, password }),
 };
 
+export interface MarketDepthLevel {
+  price: number;
+  quantity: number;
+  orders: number;
+}
+
+export interface MarketDepth {
+  buy: MarketDepthLevel[];
+  sell: MarketDepthLevel[];
+}
+
+export interface FullMarketQuote {
+  instrumentToken: string;
+  tradingSymbol?: string;
+  lastPrice: number;
+  lastQuantity?: number;
+  lastTradeTime?: string;
+  averagePrice?: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  buyQuantity?: number;
+  sellQuantity?: number;
+  netChange?: number;
+  changePercent?: number;
+  oi?: number;
+  oiDayHigh?: number;
+  oiDayLow?: number;
+  lowerCircuitLimit?: number;
+  upperCircuitLimit?: number;
+  depth?: MarketDepth;
+  timestamp: string;
+}
+
 export const MarketAPI = {
   search: (q: string) => api.get<Instrument[]>("/market/instruments", { params: { q } }),
-  quote: (tokens: string[]) => api.get("/market/quote", { params: { tokens: tokens.join(",") } }),
+  quote: (tokens: string[]) => api.get<FullMarketQuote[]>("/market/quote", { params: { tokens: tokens.join(",") } }),
+  kiteQuote: (instruments: string[]) => api.get<{ status: string; data: Record<string, any> }>("/market/quote", { params: { i: instruments.join(","), mode: "kite" } }),
+  ohlc: (instruments: string[]) => api.get<{ status: string; data: Record<string, any> }>("/market/quote/ohlc", { params: { i: instruments.join(",") } }),
+  ltp: (instruments: string[]) => api.get<{ status: string; data: Record<string, any> }>("/market/quote/ltp", { params: { i: instruments.join(",") } }),
   history: (token: string, interval: string, from: string, to: string) =>
     api.get("/market/history", { params: { token, interval, from, to } }),
   syncInstruments: () => api.post("/market/sync-instruments"),

@@ -32,14 +32,39 @@ export interface InstrumentDTO {
   optionType?: "CE" | "PE";
 }
 
+export interface DepthItemDTO {
+  price: number;
+  quantity: number;
+  orders: number;
+}
+
+export interface MarketDepthDTO {
+  buy: DepthItemDTO[];
+  sell: DepthItemDTO[];
+}
+
 export interface QuoteDTO {
   instrumentToken: string;
+  tradingSymbol?: string;
   lastPrice: number;
+  lastQuantity?: number;
+  lastTradeTime?: string;
+  averagePrice?: number;
   open: number;
   high: number;
   low: number;
   close: number;
   volume: number;
+  buyQuantity?: number;
+  sellQuantity?: number;
+  netChange?: number;
+  changePercent?: number;
+  oi?: number;
+  oiDayHigh?: number;
+  oiDayLow?: number;
+  lowerCircuitLimit?: number;
+  upperCircuitLimit?: number;
+  depth?: MarketDepthDTO;
   timestamp: string;
 }
 
