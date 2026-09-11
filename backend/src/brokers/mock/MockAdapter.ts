@@ -135,7 +135,14 @@ export class MockAdapter implements IBrokerAdapter {
 
   async getQuote(instrumentTokens: string[]): Promise<QuoteDTO[]> {
     return instrumentTokens.map((token) => {
-      const base = round2(this.prices.get(token) ?? MockAdapter.SEED_PRICES[token] ?? getAccurateBasePrice(undefined, token));
+      const cleanToken = token.includes(":") ? token.split(":")[1] : token;
+      const base = round2(
+        this.prices.get(token) ??
+        this.prices.get(cleanToken) ??
+        MockAdapter.SEED_PRICES[token] ??
+        MockAdapter.SEED_PRICES[cleanToken] ??
+        getAccurateBasePrice(undefined, token)
+      );
       const open = round2(base * 0.99);
       const high = round2(base * 1.01);
       const low = round2(base * 0.98);

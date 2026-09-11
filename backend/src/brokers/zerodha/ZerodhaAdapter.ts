@@ -120,12 +120,15 @@ export class ZerodhaAdapter implements IBrokerAdapter {
   async getQuote(instrumentTokens: string[]): Promise<QuoteDTO[]> {
     if (!instrumentTokens || instrumentTokens.length === 0) return [];
 
+    const strippedTokens = instrumentTokens.map((t) => t.includes(":") ? t.split(":")[1] : t);
+    const searchTokens = Array.from(new Set([...instrumentTokens, ...strippedTokens]));
+
     // Query database for instrument metadata (exchange, tradingSymbol, lastPrice)
     const dbInstruments = await prisma.instrument.findMany({
       where: {
         OR: [
-          { instrumentToken: { in: instrumentTokens } },
-          { tradingSymbol: { in: instrumentTokens } },
+          { instrumentToken: { in: searchTokens } },
+          { tradingSymbol: { in: searchTokens } },
         ],
       },
     }).catch(() => []);
@@ -228,7 +231,7 @@ export class ZerodhaAdapter implements IBrokerAdapter {
     // For any token that wasn't returned by live Zerodha (or in demo mode), generate complete fallback quote
     for (const token of instrumentTokens) {
       if (!resultMap.has(token)) {
-        const inst = tokenMap.get(token);
+        const inst = tokenMap.get(token) || tokenMap.get(token.includes(":") ? token.split(":")[1] : token);
         const fallback = generateFallbackQuote(token, inst);
         resultMap.set(token, fallback);
         resultMap.set(fallback.instrumentToken, fallback);
