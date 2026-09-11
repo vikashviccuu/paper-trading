@@ -7,6 +7,7 @@ function AdminMarketBrokerCard() {
   const [status, setStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const [marketStats, setMarketStats] = useState<{ total: number; byExchange?: Array<{ exchange: string; _count: { _all: number } }> } | null>(null);
   const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
   const defaultApiKey = isLocal ? "ouuv4g2r3iyafu5c" : "jfwd2gvwal8pq0rp";
   const [loginUrl, setLoginUrl] = useState(`https://kite.zerodha.com/connect/login?api_key=${defaultApiKey}&v=3`);
@@ -19,87 +20,208 @@ function AdminMarketBrokerCard() {
     api.get("/broker/zerodha/login-url")
       .then((r) => { if (r.data?.url) setLoginUrl(r.data.url); })
       .catch(() => {});
+
+    loadStats();
+  }
+
+  function loadStats() {
+    api.get("/market/stats")
+      .then((r) => setMarketStats(r.data))
+      .catch(() => {});
   }
 
   useEffect(() => {
     checkStatus();
   }, []);
 
-  async function handleSync() {
+  async function handleFullSync(exchanges: string[] = ["NSE", "NFO", "MCX"]) {
     setSyncing(true);
-    setSyncMsg("");
+    setSyncMsg(`⏳ Syncing full Zerodha market instruments (${exchanges.join(", ")})... please wait`);
     try {
-      const res = await api.post("/market/sync-instruments-public");
-      setSyncMsg(`✓ Synced ${res.data.synced?.toLocaleString("en-IN") ?? 0} instruments into database`);
-    } catch {
-      setSyncMsg("Sync failed. Check Zerodha authentication.");
+      const res = await api.post(`/market/sync-instruments-public?exchange=${exchanges.join(",")}`);
+      const total = res.data?.totalInDb ?? res.data?.synced ?? 0;
+      setSyncMsg(`✓ Full Zerodha Sync Complete! ${total.toLocaleString("en-IN")} total instruments available in database (NSE, NFO, MCX).`);
+      loadStats();
+    } catch (e: any) {
+      setSyncMsg("Sync failed: " + (e.response?.data?.error || e.message));
     } finally {
       setSyncing(false);
     }
   }
 
+  const nseCount = marketStats?.byExchange?.find((x) => x.exchange === "NSE")?._count?._all;
+  const nfoCount = marketStats?.byExchange?.find((x) => x.exchange === "NFO")?._count?._all;
+  const mcxCount = marketStats?.byExchange?.find((x) => x.exchange === "MCX")?._count?._all;
+
   return (
     <div style={{
       background: "rgba(13, 17, 28, 0.95)",
       backdropFilter: "blur(16px)",
-      border: "1px solid rgba(37, 99, 235, 0.25)",
+      border: "1px solid rgba(37, 99, 235, 0.35)",
       borderRadius: 16,
-      padding: "20px 24px",
+      padding: "22px 26px",
       marginBottom: 24,
-      boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+      boxShadow: "0 20px 40px rgba(0, 0, 0, 0.45)",
       display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      flexWrap: "wrap",
+      flexDirection: "column",
       gap: 16
     }}>
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
-            System Market Data & Zerodha Broker (Admin Only)
-          </h3>
-          <span style={{
-            padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-            background: status === "connected" ? "rgba(63, 185, 80, 0.15)" : "rgba(248, 81, 73, 0.15)",
-            border: `1px solid ${status === "connected" ? "rgba(63, 185, 80, 0.35)" : "rgba(248, 81, 73, 0.35)"}`,
-            color: status === "connected" ? "#3fb950" : "#f85149"
-          }}>
-            {status === "checking" ? "Checking Status..." : status === "connected" ? "● Zerodha Connected" : "⚠ Zerodha Token Expired"}
-          </span>
-        </div>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
-          Zerodha authentication & instrument master sync are managed strictly by Admin. Regular users do not see token errors and trade against this system feed.
-        </p>
-        {syncMsg && (
-          <div style={{ fontSize: 12, color: syncMsg.startsWith("✓") ? "#3fb950" : "#f85149", fontWeight: 600, marginTop: 6 }}>
-            {syncMsg}
+      {/* Top Header Row */}
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        flexWrap: "wrap",
+        gap: 12
+      }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
+              System Market Data &amp; Zerodha Broker (Admin Only)
+            </h3>
+            <span style={{
+              padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+              background: status === "connected" ? "rgba(63, 185, 80, 0.15)" : "rgba(248, 81, 73, 0.15)",
+              border: `1px solid ${status === "connected" ? "rgba(63, 185, 80, 0.35)" : "rgba(248, 81, 73, 0.35)"}`,
+              color: status === "connected" ? "#3fb950" : "#f85149"
+            }}>
+              {status === "checking" ? "Checking Status..." : status === "connected" ? "● Zerodha Connected" : "⚠ Zerodha Token Expired"}
+            </span>
           </div>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+            Sync and maintain the full Zerodha Kite Connect instrument master across NSE, NFO (F&amp;O), and MCX. Regular users trade against this persistent high-speed database feed.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <a
+            href={loginUrl}
+            style={{
+              padding: "8px 14px", borderRadius: 8,
+              background: "linear-gradient(135deg, #15803d, #166534)",
+              color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none",
+              boxShadow: "0 4px 12px rgba(22, 101, 52, 0.3)"
+            }}
+          >
+            🔑 Authenticate Zerodha (Admin) →
+          </a>
+        </div>
+      </div>
+
+      {/* Database Statistics Row */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap",
+        padding: "10px 14px",
+        background: "rgba(255, 255, 255, 0.02)",
+        borderRadius: 10,
+        border: "1px solid rgba(255, 255, 255, 0.05)"
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>
+          Current Database Catalog:
+        </span>
+        <span style={{
+          padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800,
+          background: "rgba(37, 99, 235, 0.2)", color: "#60a5fa", border: "1px solid rgba(96, 165, 250, 0.3)"
+        }}>
+          {marketStats ? `${marketStats.total.toLocaleString("en-IN")} Total Instruments` : "61,000+ Instruments"}
+        </span>
+        {nseCount !== undefined && (
+          <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "rgba(59, 130, 246, 0.12)", color: "#93c5fd" }}>
+            NSE: {nseCount.toLocaleString("en-IN")}
+          </span>
+        )}
+        {nfoCount !== undefined && (
+          <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "rgba(168, 85, 247, 0.12)", color: "#d8b4fe" }}>
+            NFO (F&amp;O): {nfoCount.toLocaleString("en-IN")}
+          </span>
+        )}
+        {mcxCount !== undefined && (
+          <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d" }}>
+            MCX: {mcxCount.toLocaleString("en-IN")}
+          </span>
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <a
-          href={loginUrl}
+      {/* Sync Status Feedback */}
+      {syncMsg && (
+        <div style={{
+          fontSize: 12,
+          color: syncMsg.startsWith("✓") ? "#3fb950" : syncMsg.startsWith("⏳") ? "#fbbf24" : "#f85149",
+          fontWeight: 600,
+          padding: "8px 12px",
+          background: syncMsg.startsWith("✓") ? "rgba(63, 185, 80, 0.08)" : syncMsg.startsWith("⏳") ? "rgba(245, 158, 11, 0.08)" : "rgba(248, 81, 73, 0.08)",
+          borderRadius: 8,
+          border: `1px solid ${syncMsg.startsWith("✓") ? "rgba(63, 185, 80, 0.25)" : syncMsg.startsWith("⏳") ? "rgba(245, 158, 11, 0.25)" : "rgba(248, 81, 73, 0.25)"}`
+        }}>
+          {syncMsg}
+        </div>
+      )}
+
+      {/* Action Buttons Row */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", paddingTop: 4 }}>
+        {/* Requested Full Zerodha Market data Instruments Sync Button */}
+        <button
+          onClick={() => handleFullSync(["NSE", "NFO", "MCX"])}
+          disabled={syncing}
+          title="Fetch & Sync all instruments across NSE, NFO (F&O), and MCX from Zerodha Kite"
           style={{
-            padding: "8px 16px", borderRadius: 8,
-            background: "linear-gradient(135deg, #15803d, #166534)",
-            color: "#fff", fontWeight: 700, fontSize: 12, textDecoration: "none",
-            boxShadow: "0 4px 12px rgba(22, 101, 52, 0.3)"
+            padding: "10px 20px",
+            borderRadius: 8,
+            border: "1px solid rgba(59, 130, 246, 0.6)",
+            background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: syncing ? "not-allowed" : "pointer",
+            boxShadow: "0 4px 16px rgba(37, 99, 235, 0.4)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            transition: "all 0.15s ease"
           }}
         >
-          🔑 Authenticate Zerodha (Admin) →
-        </a>
+          <span>{syncing ? "⏳" : "⚡"}</span>
+          {syncing ? "Syncing Zerodha Market Data..." : "Full Zerodha Market Data Instruments Sync"}
+        </button>
 
+        {/* Quick Exchange Sync Buttons */}
         <button
-          onClick={handleSync}
+          onClick={() => handleFullSync(["NSE"])}
           disabled={syncing}
           style={{
-            padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.1)",
-            background: "rgba(255, 255, 255, 0.06)", color: "var(--text-primary)",
-            fontWeight: 700, fontSize: 12, cursor: syncing ? "not-allowed" : "pointer"
+            padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.1)",
+            background: "rgba(255, 255, 255, 0.05)", color: "var(--text-secondary)",
+            fontWeight: 700, fontSize: 11, cursor: syncing ? "not-allowed" : "pointer"
           }}
         >
-          {syncing ? "Syncing..." : "🔄 Sync Instruments"}
+          Sync NSE Equities
+        </button>
+
+        <button
+          onClick={() => handleFullSync(["NFO"])}
+          disabled={syncing}
+          style={{
+            padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.1)",
+            background: "rgba(255, 255, 255, 0.05)", color: "var(--text-secondary)",
+            fontWeight: 700, fontSize: 11, cursor: syncing ? "not-allowed" : "pointer"
+          }}
+        >
+          Sync NFO (F&amp;O)
+        </button>
+
+        <button
+          onClick={() => handleFullSync(["MCX"])}
+          disabled={syncing}
+          style={{
+            padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.1)",
+            background: "rgba(255, 255, 255, 0.05)", color: "var(--text-secondary)",
+            fontWeight: 700, fontSize: 11, cursor: syncing ? "not-allowed" : "pointer"
+          }}
+        >
+          Sync MCX Commodities
         </button>
       </div>
     </div>

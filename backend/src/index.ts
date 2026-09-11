@@ -104,6 +104,20 @@ app.post("/api/market/sync-instruments-public", async (req, res) => {
   }
 });
 
+// Public stats endpoint for admin card & monitoring
+app.get("/api/market/stats", async (_req, res) => {
+  try {
+    const total = await prisma.instrument.count();
+    const byExchange = await prisma.instrument.groupBy({
+      by: ["exchange"],
+      _count: { _all: true },
+    });
+    res.json({ total, byExchange });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use("/api/broker", brokerRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/orders", ordersRouter);

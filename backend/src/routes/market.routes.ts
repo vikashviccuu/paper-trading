@@ -127,6 +127,24 @@ marketRouter.post("/sync-instruments", async (req, res) => {
   }
 });
 
+/** Returns instrument statistics across exchanges in Postgres. */
+marketRouter.get("/stats", async (_req, res) => {
+  try {
+    const total = await prisma.instrument.count();
+    const byExchange = await prisma.instrument.groupBy({
+      by: ["exchange"],
+      _count: { _all: true },
+    });
+    const bySegment = await prisma.instrument.groupBy({
+      by: ["segment"],
+      _count: { _all: true },
+    });
+    res.json({ total, byExchange, bySegment });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 function parseRequestedInstruments(req: any): string[] {
   let list: string[] = [];
   if (req.query.i) {
