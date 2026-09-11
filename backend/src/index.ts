@@ -23,6 +23,7 @@ import { initPriceFeedGateway } from "./websocket/priceFeedGateway";
 import { startSquareOffScheduler } from "./jobs/SquareOffScheduler";
 import { startContestSnapshotScheduler } from "./jobs/ContestSnapshotScheduler";
 import { brokerRouter } from "./routes/broker.routes";
+import { InstrumentSyncService } from "./services/InstrumentSyncService";
 import { getBrokerAdapter, resetBrokerAdapter } from "./brokers/BrokerFactory";
 import { prisma } from "./utils/prisma";
 import { Prisma } from "@prisma/client";
@@ -91,37 +92,14 @@ app.get("/api/broker/zerodha/callback", async (req, res) => {
   }
 });
 
-// Public instrument sync — called from callback page above (no JWT required)
-app.post("/api/market/sync-instruments-public", async (_req, res) => {
+// Public instrument sync — called from callback page above or public setup (no JWT required)
+app.post("/api/market/sync-instruments-public", async (req, res) => {
   try {
-    const broker = getBrokerAdapter();
-    const rawInstruments = await broker.getInstruments();
-    const instruments = rawInstruments.filter(
-      (i) => i && i.instrumentToken && (i.tradingSymbol || i.name)
-    );
-    const BATCH = 500;
-    for (let i = 0; i < instruments.length; i += BATCH) {
-      const batch = instruments.slice(i, i + BATCH).map((inst) => ({
-        instrumentToken: String(inst.instrumentToken),
-        tradingSymbol: String(inst.tradingSymbol || inst.name || inst.instrumentToken),
-        exchange: String(inst.exchange || "NSE"),
-        segment: inst.segment,
-        name: inst.name ? String(inst.name) : null,
-        lotSize: Number(inst.lotSize) || 1,
-        tickSize: new Prisma.Decimal(inst.tickSize ? String(inst.tickSize) : "0.05"),
-        expiry: inst.expiry ? new Date(inst.expiry) : null,
-        strike: inst.strike != null ? new Prisma.Decimal(String(inst.strike)) : null,
-        optionType: inst.optionType ?? null,
-      }));
-      try {
-        await prisma.instrument.createMany({ data: batch, skipDuplicates: true });
-      } catch (batchErr: any) {
-        console.warn(`[Sync] Batch ${i} warning:`, batchErr.message);
-      }
-    }
-    res.json({ synced: instruments.length });
+    const ex = req.query.exchange ? String(req.query.exchange).split(",") : ["NSE", "NFO", "MCX"];
+    const result = await InstrumentSyncService.syncExchanges(ex);
+    res.json(result);
   } catch (err: any) {
-    console.error("[Sync] Instrument sync error:", err.message);
+    console.error("[Sync] Public instrument sync error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -161,6 +139,8 @@ async function ensureDbInitialized() {
       }).catch((e) => console.warn("[DB Init] Admin seed warning:", e.message));
       console.log(`[DB Init] Created default admin: ${email}`);
     }
+
+    await InstrumentSyncService.autoSyncIfEmpty();
   } catch (err: any) {
     console.warn("[DB Init] Initialization warning:", err.message);
   }

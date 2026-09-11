@@ -350,11 +350,26 @@ export default function Terminal() {
   const [results,   setResults]   = useState<Instrument[]>([]);
   const [wPrices,   setWPrices]   = useState<Record<string,number>>({});
   const [page,          setPage]          = useState(1);
-  const pageSize = 10;
+  const pageSize = 15;
   const [sidebarTab,          setSidebarTab]          = useState<"watchlist" | "positions" | "holdings" | "orders">("watchlist");
   const [segmentFilter,       setSegmentFilter]       = useState<"ALL" | "NSE" | "NFO" | "MCX">("ALL");
   const [isSidebarCollapsed,  setIsSidebarCollapsed]  = useState(false);
   const [expandedSymbolId,    setExpandedSymbolId]    = useState<string | null>(null);
+  const [isSyncingInstruments, setIsSyncingInstruments] = useState(false);
+
+  async function triggerInstrumentSync() {
+    setIsSyncingInstruments(true);
+    setMsg({ text: "⏳ Syncing full Zerodha market instruments (NSE, NFO, MCX)...", ok: true });
+    try {
+      const res = await MarketAPI.syncInstruments();
+      setMsg({ text: `✓ Synced! Total available in DB: ${res.data.totalInDb.toLocaleString()} instruments`, ok: true });
+      MarketAPI.search(query, segmentFilter, undefined, 100).then((r) => setResults(r.data)).catch(() => {});
+    } catch (e: any) {
+      setMsg({ text: "Failed to sync instruments: " + (e.response?.data?.error || e.message), ok: false });
+    } finally {
+      setIsSyncingInstruments(false);
+    }
+  }
 
   // Broker Feed Mode (ZERODHA vs MOCK)
   const [brokerMode, setBrokerMode] = useState<"ZERODHA" | "MOCK">("ZERODHA");
@@ -548,9 +563,13 @@ export default function Terminal() {
   // watchlist search
   useEffect(() => {
     setPage(1);
-    const t = setTimeout(() => MarketAPI.search(query).then((r) => setResults(r.data)).catch(() => {}), 300);
+    const t = setTimeout(() => {
+      MarketAPI.search(query, segmentFilter === "ALL" ? undefined : segmentFilter, undefined, 100)
+        .then((r) => setResults(r.data))
+        .catch(() => {});
+    }, 250);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [query, segmentFilter]);
 
   // watchlist live prices
   useEffect(() => {
@@ -869,6 +888,32 @@ export default function Terminal() {
               {/* Tab Content: WATCHLIST */}
               {sidebarTab === "watchlist" && (
                 <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+                  {/* Watchlist Header & Sync Button */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        Market Watch
+                      </span>
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, background: "rgba(37,99,235,0.2)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" }}>
+                        61,000+ SYMBOLS
+                      </span>
+                    </div>
+                    <button
+                      onClick={triggerInstrumentSync}
+                      disabled={isSyncingInstruments}
+                      title="Fetch & Sync all latest market instruments from Zerodha Kite (NSE, NFO, MCX)"
+                      style={{
+                        background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: isSyncingInstruments ? "#fbbf24" : "#94a3b8",
+                        fontSize: 10, fontWeight: 700, cursor: isSyncingInstruments ? "wait" : "pointer",
+                        display: "flex", alignItems: "center", gap: 4, padding: "2px 6px", borderRadius: 5,
+                        transition: "all 0.15s ease"
+                      }}
+                    >
+                      <span>🔄</span>
+                      {isSyncingInstruments ? "Syncing..." : "Sync All"}
+                    </button>
+                  </div>
+
                   {/* Segment Filter Pills */}
                   <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
                     {(["ALL", "NSE", "NFO", "MCX"] as const).map((seg) => (
@@ -892,7 +937,7 @@ export default function Terminal() {
                   <div style={{ position: "relative", marginBottom: 10 }}>
                     <input
                       className="t-search"
-                      placeholder="Search symbol (e.g. RELIANCE, NIFTY)…"
+                      placeholder="Search 60,000+ symbols (e.g. RELIANCE, NIFTY, CRUDE, 24000 CE)…"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       style={{ marginBottom: 0, paddingRight: query ? 28 : 10 }}

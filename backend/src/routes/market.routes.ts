@@ -3,54 +3,124 @@ import { requireAuth } from "../middleware/auth.middleware";
 import { getBrokerAdapter } from "../brokers/BrokerFactory";
 import { prisma } from "../utils/prisma";
 import { Prisma } from "@prisma/client";
+import { InstrumentSyncService } from "../services/InstrumentSyncService";
 
 export const marketRouter = Router();
 marketRouter.use(requireAuth);
 
+const TOP_PRIORITY_SYMBOLS = [
+  "NIFTY 50", "BANKNIFTY", "FINNIFTY", "MIDCAP", "INDIA VIX",
+  "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN",
+  "BHARTIARTL", "ITC", "LT", "KOTAKBANK", "AXISBANK", "HINDUNILVR",
+  "BAJFINANCE", "MARUTI", "SUNPHARMA", "TITAN", "TMPV", "TMCV", "TATASTEEL",
+  "WIPRO", "HCLTECH", "M&M", "ADANIENT", "ADANIPORTS", "COALINDIA",
+  "BAJAJ-AUTO", "ULTRACEMCO", "ONGC", "NTPC", "POWERGRID"
+];
+
 /** Search the locally cached instrument master (populated by /sync-instruments). */
 marketRouter.get("/instruments", async (req, res) => {
-  const q = (req.query.q as string) || "";
+  const q = (req.query.q as string)?.trim() || "";
+  const exchange = req.query.exchange as string | undefined;
   const segment = req.query.segment as string | undefined;
-  const instruments = await prisma.instrument.findMany({
+  const limit = req.query.limit ? Math.min(Math.max(Number(req.query.limit), 1), 500) : 100;
+  const page = req.query.page ? Math.max(Number(req.query.page), 1) : 1;
+  const skip = (page - 1) * limit;
+
+  const exchangeFilter = exchange && exchange !== "ALL" ? { exchange } : {};
+  const segmentFilter = segment && segment !== "ALL" ? { segment: segment as any } : {};
+
+  if (q) {
+    const instruments = await prisma.instrument.findMany({
+      where: {
+        OR: [
+          { tradingSymbol: { contains: q, mode: "insensitive" } },
+          { name: { contains: q, mode: "insensitive" } },
+        ],
+        ...exchangeFilter,
+        ...segmentFilter,
+      },
+      take: limit,
+      skip,
+      orderBy: [
+        { tradingSymbol: "asc" },
+      ],
+    });
+    return res.json(instruments);
+  }
+
+  // When q is empty, return top benchmark / active instruments
+  if (exchange === "NFO" || segment === "FUTURES" || segment === "OPTIONS") {
+    const instruments = await prisma.instrument.findMany({
+      where: {
+        exchange: "NFO",
+        ...segmentFilter,
+        OR: [
+          { tradingSymbol: { contains: "FUT" } },
+          { tradingSymbol: { contains: "NIFTY" } },
+          { tradingSymbol: { contains: "BANKNIFTY" } },
+        ],
+      },
+      take: limit,
+      skip,
+      orderBy: { tradingSymbol: "asc" },
+    });
+    return res.json(instruments);
+  }
+
+  if (exchange === "MCX") {
+    const instruments = await prisma.instrument.findMany({
+      where: {
+        exchange: "MCX",
+        ...segmentFilter,
+      },
+      take: limit,
+      skip,
+      orderBy: { tradingSymbol: "asc" },
+    });
+    return res.json(instruments);
+  }
+
+  // NSE or ALL: Prioritize core market benchmarks & large caps
+  const priorityItems = await prisma.instrument.findMany({
     where: {
-      tradingSymbol: { contains: q, mode: "insensitive" },
-      ...(segment ? { segment: segment as any } : {}),
+      tradingSymbol: { in: TOP_PRIORITY_SYMBOLS },
+      ...exchangeFilter,
+      ...segmentFilter,
     },
-    take: 50,
   });
-  res.json(instruments);
+
+  priorityItems.sort((a, b) => {
+    const ia = TOP_PRIORITY_SYMBOLS.indexOf(a.tradingSymbol);
+    const ib = TOP_PRIORITY_SYMBOLS.indexOf(b.tradingSymbol);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+
+  if (priorityItems.length >= limit) {
+    return res.json(priorityItems.slice(0, limit));
+  }
+
+  const priorityTokens = new Set(priorityItems.map((p) => p.instrumentToken));
+  const remaining = await prisma.instrument.findMany({
+    where: {
+      instrumentToken: { notIn: Array.from(priorityTokens) },
+      ...exchangeFilter,
+      ...segmentFilter,
+      lotSize: 1,
+    },
+    take: limit - priorityItems.length,
+    skip,
+    orderBy: { tradingSymbol: "asc" },
+  });
+
+  return res.json([...priorityItems, ...remaining]);
 });
 
-/** Pulls the full instrument dump from the active broker adapter into Postgres. Run daily. */
-marketRouter.post("/sync-instruments", async (_req, res) => {
+/** Pulls the full instrument dump from Zerodha Kite Connect into Postgres across NSE, NFO, MCX. */
+marketRouter.post("/sync-instruments", async (req, res) => {
   try {
-    const broker = getBrokerAdapter();
-    const rawInstruments = await broker.getInstruments();
-    const instruments = rawInstruments.filter(
-      (i) => i && i.instrumentToken && (i.tradingSymbol || i.name)
-    );
-    const BATCH = 500;
-    for (let i = 0; i < instruments.length; i += BATCH) {
-      const batch = instruments.slice(i, i + BATCH).map((inst) => ({
-        instrumentToken: String(inst.instrumentToken),
-        tradingSymbol: String(inst.tradingSymbol || inst.name || inst.instrumentToken),
-        exchange: String(inst.exchange || "NSE"),
-        segment: inst.segment,
-        name: inst.name ? String(inst.name) : null,
-        lotSize: Number(inst.lotSize) || 1,
-        tickSize: new Prisma.Decimal(inst.tickSize ? String(inst.tickSize) : "0.05"),
-        expiry: inst.expiry ? new Date(inst.expiry) : null,
-        strike: inst.strike != null ? new Prisma.Decimal(String(inst.strike)) : null,
-        optionType: inst.optionType ?? null,
-      }));
-      try {
-        await prisma.instrument.createMany({ data: batch, skipDuplicates: true });
-      } catch (batchErr: any) {
-        console.warn(`[Sync] Batch ${i} warning:`, batchErr.message);
-      }
-    }
-
-    res.json({ synced: instruments.length });
+    const ex = req.query.exchange ? String(req.query.exchange).split(",") : ["NSE", "NFO", "MCX"];
+    const result = await InstrumentSyncService.syncExchanges(ex);
+    res.json(result);
   } catch (err: any) {
     console.error("[Sync] Instrument sync error:", err.message);
     res.status(500).json({ error: err.message });

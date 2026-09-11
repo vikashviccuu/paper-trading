@@ -61,14 +61,24 @@ export interface FullMarketQuote {
 }
 
 export const MarketAPI = {
-  search: (q: string) => api.get<Instrument[]>("/market/instruments", { params: { q } }),
+  search: (q?: string, exchange?: string, segment?: string, limit?: number, page?: number) =>
+    api.get<Instrument[]>("/market/instruments", {
+      params: {
+        q: q ? q.trim() : undefined,
+        exchange: exchange && exchange !== "ALL" ? exchange : undefined,
+        segment: segment && segment !== "ALL" ? segment : undefined,
+        limit,
+        page,
+      },
+    }),
   quote: (tokens: string[]) => api.get<FullMarketQuote[]>("/market/quote", { params: { tokens: tokens.join(",") } }),
   kiteQuote: (instruments: string[]) => api.get<{ status: string; data: Record<string, any> }>("/market/quote", { params: { i: instruments.join(","), mode: "kite" } }),
   ohlc: (instruments: string[]) => api.get<{ status: string; data: Record<string, any> }>("/market/quote/ohlc", { params: { i: instruments.join(",") } }),
   ltp: (instruments: string[]) => api.get<{ status: string; data: Record<string, any> }>("/market/quote/ltp", { params: { i: instruments.join(",") } }),
   history: (token: string, interval: string, from: string, to: string) =>
     api.get("/market/history", { params: { token, interval, from, to } }),
-  syncInstruments: () => api.post("/market/sync-instruments"),
+  syncInstruments: (exchange?: string) =>
+    api.post<{ synced: number; totalInDb: number }>("/market/sync-instruments", {}, { params: { exchange } }),
 };
 
 export const OrdersAPI = {
