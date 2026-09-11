@@ -1,10 +1,17 @@
 import axios from "axios";
+import { getClientDeviceHints } from "../utils/device";
 
 export const api = axios.create({ baseURL: "/api" });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
   if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  const hints = getClientDeviceHints();
+  config.headers["x-device-id"] = hints.deviceId;
+  config.headers["x-client-timezone"] = hints.clientTimezone;
+  config.headers["x-client-screen"] = hints.clientScreen;
+
   return config;
 });
 
@@ -19,10 +26,80 @@ export interface Instrument {
 }
 
 export const AuthAPI = {
-  signup: (name: string, email: string, password: string) =>
-    api.post("/auth/signup", { name, email, password }),
-  login: (email: string, password: string) => api.post("/auth/login", { email, password }),
+  signup: (name: string, email: string, password: string, phone: string) => {
+    const hints = getClientDeviceHints();
+    return api.post<{
+      requiresVerification?: boolean;
+      userId: string;
+      name: string;
+      email: string;
+      phone: string;
+      demoOtp?: { emailOtp?: string; phoneOtp?: string };
+      message?: string;
+      token?: string;
+      user?: any;
+    }>("/auth/signup", { name, email, password, phone, ...hints });
+  },
+
+  verifyRegistrationOtp: (payload: { userId: string; emailOtp: string; phoneOtp: string }) => {
+    const hints = getClientDeviceHints();
+    return api.post<{
+      success: boolean;
+      verified: boolean;
+      token: string;
+      user: any;
+      message?: string;
+    }>("/auth/verify-registration-otp", { ...payload, deviceId: hints.deviceId });
+  },
+
+  resendVerificationOtp: (payload: { userId: string; channel?: "email" | "phone" | "both" }) =>
+    api.post<{
+      sent: boolean;
+      message: string;
+      demoOtp?: { emailOtp?: string; phoneOtp?: string };
+    }>("/auth/resend-verification-otp", payload),
+
+  login: (email: string, password: string) => {
+    const hints = getClientDeviceHints();
+    return api.post<{
+      token?: string;
+      user?: any;
+      requiresVerification?: boolean;
+      requiresLoginOtp?: boolean;
+      userId?: string;
+      email?: string;
+      phone?: string;
+      demoOtp?: { emailOtp?: string; phoneOtp?: string; otp?: string };
+      message?: string;
+    }>("/auth/login", { email, password, ...hints });
+  },
+
+  verifyLoginOtp: (payload: { userId: string; otp: string }) => {
+    const hints = getClientDeviceHints();
+    return api.post<{
+      token: string;
+      user: any;
+    }>("/auth/verify-login-otp", { ...payload, deviceId: hints.deviceId });
+  },
+
+  sendPasswordResetOtp: (target: string | { email?: string; phone?: string; identifier?: string }) => {
+    const payload = typeof target === "string" ? { identifier: target } : target;
+    return api.post<{ sent: boolean; message: string; expiresAt: string; otp?: string; destination?: string }>(
+      "/auth/forgot-password/send-otp",
+      payload
+    );
+  },
+  resetPassword: (payload: { email?: string; phone?: string; identifier?: string; otp: string; newPassword: string }) => {
+    const hints = getClientDeviceHints();
+    return api.post<{ success: boolean; message: string }>("/auth/forgot-password/reset", {
+      ...payload,
+      deviceId: hints.deviceId,
+    });
+  },
 };
+
+
+
 
 export interface MarketDepthLevel {
   price: number;

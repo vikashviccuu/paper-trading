@@ -4,6 +4,7 @@ import { requireAuth, AuthedRequest } from "../middleware/auth.middleware";
 import { profileService } from "../services/ProfileService";
 import { otpService } from "../services/OtpService";
 import { AppError } from "../engine/OrderEngine";
+import { LoginAuditService } from "../services/LoginAuditService";
 
 export const profileRouter = Router();
 profileRouter.use(requireAuth);
@@ -12,6 +13,21 @@ profileRouter.get("/", async (req: AuthedRequest, res) => {
   const profile = await profileService.getFullProfile(req.userId!);
   res.json(profile);
 });
+
+profileRouter.get("/login-history", async (req: AuthedRequest, res) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const currentDeviceId = req.headers["x-device-id"] as string | undefined;
+
+  const history = await LoginAuditService.getUserLoginHistory(
+    req.userId!,
+    currentDeviceId,
+    page,
+    limit
+  );
+  res.json(history);
+});
+
 
 const personalSchema = z.object({
   name: z.string().min(1).optional(),

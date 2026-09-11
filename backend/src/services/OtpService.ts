@@ -2,18 +2,14 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../utils/prisma";
 import { env } from "../config/env";
 import { AppError } from "../engine/OrderEngine";
+import { Msg91Service } from "./Msg91Service";
 
-export type OtpPurpose = "PHONE_VERIFICATION" | "LIVE_ORDER_2FA";
+export type OtpPurpose = "PHONE_VERIFICATION" | "LIVE_ORDER_2FA" | "PASSWORD_RESET" | "EMAIL_VERIFICATION" | "LOGIN_2FA";
+
 
 /**
- * Minimal OTP generate/verify flow. Originally built only for phone number
- * verification on the profile page; also used for per-order 2FA confirmation
- * before a live (real-money) order is submitted to a broker - see
- * docs/LIVE_TRADING.md. No SMS gateway is wired up (that's an MSG91/Twilio/
- * etc. integration outside this project's scope) - in any environment other
- * than "production" the raw OTP is returned directly in the send-OTP API
- * response so the whole flow is testable without one. See
- * docs/KYC_AND_BANKING.md.
+ * Minimal OTP generate/verify flow with MSG91 SMS gateway integration.
+ * Sends live SMS OTPs to mobile numbers via MSG91 SendOTP API.
  */
 export class OtpService {
   async send(userId: string, purpose: OtpPurpose, target: string): Promise<{ otp?: string; expiresAt: Date }> {
@@ -25,11 +21,20 @@ export class OtpService {
       data: { userId, purpose, target, otpHash, expiresAt },
     });
 
-    // In production, this is where you'd call an SMS gateway instead of
-    // returning the OTP - never ship the "return it in the response" branch
-    // to a real deployment.
+    // If target is a phone number (10+ digits), dispatch real SMS via MSG91
+    const digitsOnly = target.replace(/\D/g, "");
+    if (digitsOnly.length >= 10) {
+      try {
+        await Msg91Service.sendOtp(target, otp);
+      } catch (err: any) {
+        console.error(`[OtpService] MSG91 SMS delivery to ${target} failed:`, err.message);
+        // Do not fail local flow if testing with dummy numbers or offline
+      }
+    }
+
     return { otp: env.NODE_ENV === "production" ? undefined : otp, expiresAt };
   }
+
 
   async verify(userId: string, purpose: OtpPurpose, target: string, otp: string): Promise<void> {
     const record = await prisma.otpVerification.findFirst({

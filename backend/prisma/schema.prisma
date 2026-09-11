@@ -104,6 +104,9 @@ enum BankVerificationStatus {
 enum OtpPurpose {
   PHONE_VERIFICATION
   LIVE_ORDER_2FA // per-order confirmation for live trading - see docs/LIVE_TRADING.md
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+  LOGIN_2FA
 }
 
 // Lifecycle of a user's real-money trading account - see docs/LIVE_TRADING.md.
@@ -158,6 +161,9 @@ model User {
   email         String   @unique
   passwordHash  String
   name          String
+  phone         String?
+  emailVerified Boolean  @default(false)
+  phoneVerified Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   isDeleted     Boolean  @default(false)
@@ -177,6 +183,7 @@ model User {
   prizeAwards        ContestPrizeAward[]
   liveTradingAccount LiveTradingAccount?
   liveOrders         LiveOrder[]
+  loginHistory       UserLoginHistory[]
 }
 
 // Admins are a deliberately separate identity from User - a different table,
@@ -799,3 +806,42 @@ model OtpVerification {
 
   @@index([userId, purpose])
 }
+
+enum LoginStatus {
+  SUCCESS
+  FAILED
+  BLOCKED
+}
+
+// Enterprise security audit model capturing every authentication attempt
+model UserLoginHistory {
+  id               String       @id @default(uuid())
+  userId           String?
+  user             User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email            String
+  status           LoginStatus  @default(SUCCESS)
+  failureReason    String?      // e.g. INVALID_PASSWORD, USER_NOT_FOUND, ACCOUNT_LOCKED
+  authMethod       String       @default("PASSWORD") // PASSWORD | SIGNUP | OAUTH
+  ipAddress        String
+  deviceId         String       // Persistent client device identifier
+  userAgent        String       @db.Text
+  browser          String       // e.g. Chrome, Firefox, Safari, Edge
+  browserVersion   String?
+  os               String       // e.g. Windows, macOS, Android, iOS, Linux
+  osVersion        String?
+  deviceType       String       @default("DESKTOP") // DESKTOP | MOBILE | TABLET | BOT | UNKNOWN
+  deviceModel      String?      // e.g. iPhone, Pixel 7, PC
+  timezone         String?      // e.g. Asia/Kolkata
+  screenResolution String?      // e.g. 1920x1080
+  country          String?      // Geolocation country if available from proxy/cloud
+  city             String?      // Geolocation city if available
+  isSuspicious     Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+
+  @@index([userId, createdAt])
+  @@index([email, createdAt])
+  @@index([ipAddress])
+  @@index([deviceId])
+  @@index([createdAt])
+}
+

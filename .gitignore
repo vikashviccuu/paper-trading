@@ -30,3 +30,15 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Cache & build artifacts
+*.tsbuildinfo
+
+# Videos & recordings
+vedio/
+video/
+*.mp4
+
+# Automation scripts
+backend/scripts/*.py
+
+

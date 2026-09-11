@@ -19,6 +19,7 @@ import { adminKycRouter } from "./routes/adminKyc.routes";
 import { adminPrizesRouter } from "./routes/adminPrizes.routes";
 import { liveTradingRouter } from "./routes/liveTrading.routes";
 import { adminLiveTradingRouter } from "./routes/adminLiveTrading.routes";
+import { adminLoginHistoryRouter } from "./routes/adminLoginHistory.routes";
 import { initPriceFeedGateway } from "./websocket/priceFeedGateway";
 import { startSquareOffScheduler } from "./jobs/SquareOffScheduler";
 import { startContestSnapshotScheduler } from "./jobs/ContestSnapshotScheduler";
@@ -134,6 +135,7 @@ app.use("/api/admin/kyc", adminKycRouter);
 app.use("/api/admin/prizes", adminPrizesRouter);
 app.use("/api/live-trading", liveTradingRouter);
 app.use("/api/admin/live-trading", adminLiveTradingRouter);
+app.use("/api/admin/login-history", adminLoginHistoryRouter);
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);

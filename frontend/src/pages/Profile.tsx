@@ -6,6 +6,7 @@ import CommunicationDetailsForm from "../components/profile/CommunicationDetails
 import KycSection from "../components/profile/KycSection";
 import BankAccountsSection from "../components/profile/BankAccountsSection";
 import PayoutPreferenceSection from "../components/profile/PayoutPreferenceSection";
+import LoginHistorySection from "../components/profile/LoginHistorySection";
 
 const TABS = [
   { id: "personal",  label: "Personal",      icon: "👤" },
@@ -14,7 +15,9 @@ const TABS = [
   { id: "kyc",       label: "KYC",            icon: "🛡️" },
   { id: "bank",      label: "Bank",           icon: "🏦" },
   { id: "payout",    label: "Payout",         icon: "💸" },
+  { id: "security",  label: "Security",       icon: "🔐" },
 ];
+
 
 const KYC_STATUS_STYLE: Record<string, { bg: string; color: string; border: string }> = {
   NOT_STARTED:       { bg: "#1a1f2e", color: "#64748b", border: "#1e2d3d" },
@@ -128,6 +131,7 @@ export default function Profile() {
         {tab === "kyc"      && <KycSection fullName={data.user.name} kyc={data.kyc ?? { status: "NOT_STARTED", panVerified: false, documents: [] }} onChanged={load} />}
         {tab === "bank"     && <BankAccountsSection accounts={data.bankAccounts ?? []} onChanged={load} />}
         {tab === "payout"   && <PayoutPreferenceSection profile={data.profile} onSaved={load} />}
+        {tab === "security" && <LoginHistorySection />}
       </div>
     </div>
   );

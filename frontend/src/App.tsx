@@ -4,6 +4,7 @@ import { useAdminAuth } from "./store/AdminAuthContext";
 import ZerodhaCallback from "./pages/ZerodhaCallback";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import Trade from "./pages/Trade";
 import Portfolio from "./pages/Portfolio";
@@ -19,6 +20,7 @@ import AdminContestDetail from "./pages/admin/AdminContestDetail";
 import AdminKycQueue from "./pages/admin/AdminKycQueue";
 import AdminContestPrizes from "./pages/admin/AdminContestPrizes";
 import AdminLiveTrading from "./pages/admin/AdminLiveTrading";
+import AdminLoginHistory from "./pages/admin/AdminLoginHistory";
 
 function PrivateRoute({ children }: { children: JSX.Element }) {
   const { token } = useAuth();
@@ -49,6 +51,7 @@ function AdminApp() {
             <Link to="/admin/terminal" style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13, textDecoration: "none" }}>Terminal ↗</Link>
             <Link to="/admin/kyc" style={{ color: "#8b949e", fontSize: 13, textDecoration: "none" }}>KYC Review</Link>
             <Link to="/admin/live-trading" style={{ color: "#8b949e", fontSize: 13, textDecoration: "none" }}>Live Trading</Link>
+            <Link to="/admin/login-history" style={{ color: "#8b949e", fontSize: 13, textDecoration: "none" }}>Login History</Link>
           </>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -68,11 +71,13 @@ function AdminApp() {
           <Route path="/admin/contests/:id/prizes" element={<AdminPrivateRoute><AdminContestPrizes /></AdminPrivateRoute>} />
           <Route path="/admin/kyc" element={<AdminPrivateRoute><AdminKycQueue /></AdminPrivateRoute>} />
           <Route path="/admin/live-trading" element={<AdminPrivateRoute><AdminLiveTrading /></AdminPrivateRoute>} />
+          <Route path="/admin/login-history" element={<AdminPrivateRoute><AdminLoginHistory /></AdminPrivateRoute>} />
         </Routes>
       </div>
     </div>
   );
 }
+
 
 function UserApp() {
   const { user, logout } = useAuth();
@@ -167,6 +172,7 @@ function UserApp() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/zerodha/callback" element={<ZerodhaCallback />} />
           <Route path="/broker/zerodha/callback" element={<ZerodhaCallback />} />
           <Route path="/trade/broker/zerodha/callback" element={<ZerodhaCallback />} />

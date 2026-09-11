@@ -59,7 +59,37 @@ export const ProfileAPI = {
   verifyPhoneOtp: (phone: string, otp: string) => api.post<UserProfile>("/profile/communication/phone/verify-otp", { phone, otp }),
   updatePayoutPreference: (preference: "CASH_WITHDRAWAL" | "PROP_TRADING") =>
     api.patch<UserProfile>("/profile/payout-preference", { preference }),
+  getLoginHistory: (page = 1, limit = 20) =>
+    api.get<{ items: UserLoginHistoryItem[]; total: number; page: number; totalPages: number }>("/profile/login-history", {
+      params: { page, limit },
+    }),
 };
+
+export interface UserLoginHistoryItem {
+  id: string;
+  userId?: string | null;
+  email: string;
+  status: "SUCCESS" | "FAILED" | "BLOCKED";
+  failureReason?: string | null;
+  authMethod: string;
+  ipAddress: string;
+  deviceId: string;
+  userAgent: string;
+  browser: string;
+  browserVersion?: string | null;
+  os: string;
+  osVersion?: string | null;
+  deviceType: string;
+  deviceModel?: string | null;
+  timezone?: string | null;
+  screenResolution?: string | null;
+  country?: string | null;
+  city?: string | null;
+  isSuspicious: boolean;
+  createdAt: string;
+  isCurrentDevice?: boolean;
+}
+
 
 export const KycAPI = {
   get: () => api.get<Kyc>("/kyc"),

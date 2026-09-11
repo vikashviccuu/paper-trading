@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getClientDeviceHints } from "../utils/device";
 
 /**
  * Deliberately a separate axios instance from services/api.ts, with its own
@@ -12,8 +13,15 @@ export const adminApi = axios.create({ baseURL: "/api" });
 adminApi.interceptors.request.use((config) => {
   const token = localStorage.getItem("adminToken");
   if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  const hints = getClientDeviceHints();
+  config.headers["x-device-id"] = hints.deviceId;
+  config.headers["x-client-timezone"] = hints.clientTimezone;
+  config.headers["x-client-screen"] = hints.clientScreen;
+
   return config;
 });
+
 
 export interface AdminContest {
   id: string;
@@ -151,3 +159,96 @@ export const AdminLiveTradingAPI = {
   grantEligibility: (userId: string) => adminApi.post(`/admin/live-trading/accounts/${userId}/grant-eligibility`),
   orderAudit: (userId: string) => adminApi.get<AdminLiveOrder[]>(`/admin/live-trading/accounts/${userId}/orders`),
 };
+
+export interface AdminLoginAuditItem {
+  id: string;
+  userId?: string | null;
+  email: string;
+  status: "SUCCESS" | "FAILED" | "BLOCKED";
+  failureReason?: string | null;
+  authMethod: string;
+  ipAddress: string;
+  deviceId: string;
+  userAgent: string;
+  browser: string;
+  browserVersion?: string | null;
+  os: string;
+  osVersion?: string | null;
+  deviceType: string;
+  deviceModel?: string | null;
+  timezone?: string | null;
+  screenResolution?: string | null;
+  country?: string | null;
+  city?: string | null;
+  isSuspicious: boolean;
+  createdAt: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    createdAt: string;
+    kyc?: { status: string } | null;
+    liveTradingAccount?: { status: string } | null;
+  } | null;
+}
+
+export interface AdminSecurityStats {
+  total24h: number;
+  success24h: number;
+  failed24h: number;
+  failureRate24h: string;
+  total7d: number;
+  suspiciousCount: number;
+  uniqueDevicesCount: number;
+  uniqueIpsCount: number;
+}
+
+export interface UserSecurityOverview {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    createdAt: string;
+    wallet?: { cashBalance: string } | null;
+    kyc?: { status: string; panVerified: boolean } | null;
+    liveTradingAccount?: { status: string } | null;
+  };
+  totalLogins: number;
+  failedAttempts: number;
+  devices: Array<{
+    deviceId: string;
+    deviceType: string;
+    browser: string;
+    os: string;
+    loginCount: number;
+    firstSeen: string;
+    lastSeen: string;
+  }>;
+  ips: Array<{
+    ipAddress: string;
+    country?: string | null;
+    city?: string | null;
+    count: number;
+    lastSeen: string;
+  }>;
+  recentLogins: AdminLoginAuditItem[];
+}
+
+export const AdminLoginHistoryAPI = {
+  list: (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    userId?: string;
+    isSuspicious?: boolean;
+    startDate?: string;
+    endDate?: string;
+  }) =>
+    adminApi.get<{ items: AdminLoginAuditItem[]; total: number; page: number; totalPages: number }>("/admin/login-history", {
+      params,
+    }),
+  getStats: () => adminApi.get<AdminSecurityStats>("/admin/login-history/stats"),
+  getUserDetail: (userId: string) => adminApi.get<UserSecurityOverview>(`/admin/login-history/users/${userId}`),
+};
+

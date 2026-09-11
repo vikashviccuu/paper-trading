@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
+    "@types/ua-parser-js": "^0.7.39",
     "axios": "^1.7.4",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -29,6 +30,7 @@
     "node-cron": "^4.6.0",
     "otplib": "^13.0.1",
     "socket.io": "^4.7.5",
+    "ua-parser-js": "^2.0.10",
     "ws": "^8.18.0",
     "zod": "^3.23.8"
   },
