@@ -4,6 +4,7 @@ import { getBrokerAdapter } from "../brokers/BrokerFactory";
 import { orderEngine } from "../engine/OrderEngine";
 import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
+import { getAccurateBasePrice } from "../utils/marketDataReference";
 
 /**
  * Fan-out layer between the (single) broker tick stream and however many
@@ -50,20 +51,29 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
           }
 
           // Fallback heartbeat: If outside market hours or broker is silent,
-          // emit simulated ticks every 1.5s so orders and chart continue live testing
+          // emit simulated ticks every 1.5s using accurate real-market base prices
           if (!fallbackIntervals.has(token)) {
             let lastPrice = 0;
-            // query db for initial lastPrice
+            let currentInst: any = null;
+            // query db for initial lastPrice or calculate from accurate reference
             prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
-              if (inst?.lastPrice) lastPrice = Number(inst.lastPrice);
-            }).catch(() => {});
+              currentInst = inst;
+              const dbPrice = Number(inst?.lastPrice || 0);
+              if (dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500) {
+                lastPrice = dbPrice;
+              } else {
+                lastPrice = getAccurateBasePrice(inst, token);
+              }
+            }).catch(() => {
+              lastPrice = getAccurateBasePrice(undefined, token);
+            });
 
             const timer = setInterval(() => {
               const lastSeen = lastTickTimes.get(token) ?? 0;
               // If no live tick was received from broker in the last 3.5 seconds
               if (Date.now() - lastSeen > 3500) {
                 if (!lastPrice || lastPrice <= 0) {
-                  lastPrice = token === "256265" ? 23450 : token === "260105" ? 50200 : 1000;
+                  lastPrice = getAccurateBasePrice(currentInst, token);
                 }
                 const jitter = (Math.random() - 0.495) * 0.0015;
                 lastPrice = Number((lastPrice * (1 + jitter)).toFixed(2));

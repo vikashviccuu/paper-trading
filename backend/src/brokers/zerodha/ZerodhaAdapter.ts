@@ -9,9 +9,10 @@ import {
   TickListener,
 } from "../IBrokerAdapter";
 import { prisma } from "../../utils/prisma";
+import { getAccurateBasePrice } from "../../utils/marketDataReference";
 
 function generateFallbackQuote(token: string, inst?: any): QuoteDTO {
-  const base = Number(inst?.lastPrice || 1500);
+  const base = getAccurateBasePrice(inst, token);
   const spread = Math.max(Number((base * 0.0005).toFixed(2)), 0.05);
   const open = Number((base * (1 + (Math.random() - 0.5) * 0.008)).toFixed(2));
   const high = Number((Math.max(open, base) * (1 + Math.random() * 0.01)).toFixed(2));

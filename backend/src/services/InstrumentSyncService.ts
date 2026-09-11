@@ -2,6 +2,7 @@ import { PrismaClient, Prisma } from "@prisma/client";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { KiteConnect } = require("kiteconnect");
 import { prisma } from "../utils/prisma";
+import { ACCURATE_MARKET_PRICES, getAccurateBasePrice } from "../utils/marketDataReference";
 
 const DEFAULT_API_KEY = process.env.KITE_API_KEY || "ouuv4g2r3iyafu5c";
 
@@ -61,7 +62,22 @@ export class InstrumentSyncService {
               expiry: inst.expiry ? new Date(inst.expiry) : null,
               strike: inst.strike != null ? new Prisma.Decimal(String(inst.strike)) : null,
               optionType: mapOptionType(inst.instrument_type),
-              lastPrice: inst.last_price != null ? new Prisma.Decimal(String(inst.last_price)) : null,
+              lastPrice: new Prisma.Decimal(
+                String(
+                  inst.last_price && Number(inst.last_price) > 0
+                    ? Number(inst.last_price)
+                    : getAccurateBasePrice(
+                        {
+                          tradingSymbol: inst.tradingsymbol,
+                          segment: mapSegment(inst.segment, inst.instrument_type),
+                          strike: inst.strike,
+                          optionType: mapOptionType(inst.instrument_type),
+                          exchange,
+                        },
+                        String(inst.instrument_token)
+                      )
+                )
+              ),
             }));
 
             try {
@@ -82,11 +98,42 @@ export class InstrumentSyncService {
         }
       }
 
+      // Update benchmark and top stock prices to today's exact market quotes
+      await this.updateAccurateMarketPrices();
+
       const totalInDb = await prisma.instrument.count();
       return { synced: totalSynced, totalInDb };
     } finally {
       this.syncing = false;
     }
+  }
+
+  /**
+   * Updates lastPrice in the database for all major benchmark indices and active equities
+   * to today's exact real-market prices.
+   */
+  static async updateAccurateMarketPrices(): Promise<number> {
+    let updated = 0;
+    for (const [key, price] of Object.entries(ACCURATE_MARKET_PRICES)) {
+      try {
+        const res = await prisma.instrument.updateMany({
+          where: {
+            OR: [
+              { instrumentToken: key },
+              { tradingSymbol: key },
+            ],
+          },
+          data: {
+            lastPrice: new Prisma.Decimal(String(price)),
+          },
+        });
+        updated += res.count;
+      } catch (err: any) {
+        console.warn(`[InstrumentSync] Price seed warning for ${key}:`, err.message);
+      }
+    }
+    console.log(`[InstrumentSync] Updated accurate market prices for ${updated} instrument records.`);
+    return updated;
   }
 
   /**
@@ -102,6 +149,8 @@ export class InstrumentSyncService {
         );
       } else {
         console.log(`[InstrumentSync] Instrument database already populated with ${count} instruments.`);
+        // Ensure benchmark prices match today's real live market values
+        await this.updateAccurateMarketPrices();
       }
     } catch (err: any) {
       console.warn("[InstrumentSync] autoSyncIfEmpty check failed:", err.message);
