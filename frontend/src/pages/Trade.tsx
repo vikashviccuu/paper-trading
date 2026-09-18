@@ -360,6 +360,64 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
   );
 }
 
+// ── Modern Terminal Color Themes ─────────────────────────────
+const TERMINAL_THEMES = [
+  {
+    id: "cyber-midnight",
+    name: "Cyber Midnight",
+    desc: "Indigo & Deep Space Blue",
+    dot: "#6366f1",
+    bg: "#090d16",
+    surface: "#0e1320",
+    accent: "#6366f1",
+  },
+  {
+    id: "pure-obsidian",
+    name: "Pure Obsidian",
+    desc: "AMOLED Pitch Black & Ice Cyan",
+    dot: "#0ea5e9",
+    bg: "#020408",
+    surface: "#06090e",
+    accent: "#0ea5e9",
+  },
+  {
+    id: "bloomberg-slate",
+    name: "Bloomberg Slate",
+    desc: "Wall St Navy & Warm Amber",
+    dot: "#f59e0b",
+    bg: "#080f1e",
+    surface: "#0d172e",
+    accent: "#f59e0b",
+  },
+  {
+    id: "emerald-quant",
+    name: "Emerald Quant",
+    desc: "Matrix Pine & Mint Green",
+    dot: "#10b981",
+    bg: "#030f08",
+    surface: "#07170e",
+    accent: "#10b981",
+  },
+  {
+    id: "neon-nebula",
+    name: "Neon Nebula",
+    desc: "Velvet Purple & Violet Glow",
+    dot: "#a855f7",
+    bg: "#0c0817",
+    surface: "#120d24",
+    accent: "#a855f7",
+  },
+  {
+    id: "titanium-charcoal",
+    name: "Titanium Charcoal",
+    desc: "Minimal Carbon & Sky Blue",
+    dot: "#38bdf8",
+    bg: "#111215",
+    surface: "#17181c",
+    accent: "#38bdf8",
+  },
+];
+
 // ── Main terminal ────────────────────────────────────────────
 function Terminal() {
   const location  = useLocation();
@@ -367,6 +425,32 @@ function Terminal() {
   const [sp]      = useSearchParams();
   const contestId = sp.get("contestId") ?? undefined;
   const isAdmin   = location.pathname.startsWith("/admin");
+
+  // Modern Theme Engine
+  const [theme, setTheme] = useState<string>(() => {
+    return localStorage.getItem("terminal_theme") || "cyber-midnight";
+  });
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("terminal_theme", theme);
+      document.documentElement.setAttribute("data-theme", theme);
+    } catch { }
+  }, [theme]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+        setThemeMenuOpen(false);
+      }
+    }
+    if (themeMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [themeMenuOpen]);
 
   const [loginUrl, setLoginUrl] = useState("");
   const [dbTotalCount, setDbTotalCount] = useState<number | null>(null);
@@ -740,9 +824,10 @@ function Terminal() {
 
   const deployedPct = wallet && wallet > 0 ? Math.min(100, positions.reduce((s: number, p: any) => s + Math.abs(+p.quantity) * +(p.averagePrice ?? p.avgPrice ?? 0), 0) / wallet * 100) : 0;
   const margin      = instrument && displayLtp ? (Number(displayLtp) * qty * (instrument.lotSize || 1) * (ptype === "DELIVERY" ? 1.0 : 0.2)) : 0;
+  const currentThemeObj = TERMINAL_THEMES.find((t) => t.id === theme) || TERMINAL_THEMES[0];
 
   return (
-    <div className="t-root">
+    <div className="t-root" data-theme={theme}>
       <TickerBar marketStatus={marketStatus} />
       <KiteStatusBar />
 
@@ -763,10 +848,62 @@ function Terminal() {
           </div>
         ) : (
           <div className="t-nav-brand">
-            <div className="t-nav-title" style={{ color: "#60a5fa", fontWeight: 800 }}>Admin Terminal</div>
+            <div className="t-nav-title" style={{ color: "var(--accent-text)", fontWeight: 800 }}>Admin Terminal</div>
           </div>
         )}
         <div className="t-nav-right">
+          {/* Theme Selector */}
+          <div className="t-theme-wrapper" ref={themeMenuRef}>
+            <button
+              type="button"
+              className="t-theme-btn"
+              onClick={() => setThemeMenuOpen((v) => !v)}
+              title="Change Terminal Theme"
+            >
+              <span
+                className="t-theme-swatch"
+                style={{ background: currentThemeObj.dot }}
+              />
+              <span>{currentThemeObj.name}</span>
+              <span style={{ fontSize: 9, opacity: 0.7 }}>▼</span>
+            </button>
+
+            {themeMenuOpen && (
+              <div className="t-theme-menu">
+                <div className="t-theme-header">
+                  <span>🎨 Terminal Theme</span>
+                  <span style={{ fontSize: 9, opacity: 0.6 }}>Modern Presets</span>
+                </div>
+                {TERMINAL_THEMES.map((t) => (
+                  <div
+                    key={t.id}
+                    className={`t-theme-item ${theme === t.id ? "active" : ""}`}
+                    onClick={() => {
+                      setTheme(t.id);
+                      setThemeMenuOpen(false);
+                    }}
+                  >
+                    <div className="t-theme-info">
+                      <span
+                        className="t-theme-swatch"
+                        style={{ background: t.dot, width: 14, height: 14 }}
+                      />
+                      <div>
+                        <div className="t-theme-name">{t.name}</div>
+                        <div className="t-theme-desc">{t.desc}</div>
+                      </div>
+                    </div>
+                    <div className="t-theme-dots">
+                      <span className="t-theme-dot" style={{ background: t.bg }} title="Base" />
+                      <span className="t-theme-dot" style={{ background: t.surface }} title="Surface" />
+                      <span className="t-theme-dot" style={{ background: t.accent }} title="Accent" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <span className="pill pill-blue">Paper</span>
           {brokerMode === "ZERODHA" ? (
             <button
