@@ -23,6 +23,40 @@ marketRouter.get("/status", (req, res) => {
   });
 });
 
+/** Returns benchmark indices for terminal tickers directly from DB/metadata */
+marketRouter.get("/indices", async (_req, res) => {
+  try {
+    const benchmarkTokens = ["256265", "260105", "257801", "264969", "288009"];
+    const instruments = await prisma.instrument.findMany({
+      where: {
+        instrumentToken: { in: benchmarkTokens },
+      },
+    });
+
+    const fallbackIndices = [
+      { label: "NIFTY 50", token: "256265", tradingSymbol: "NIFTY 50" },
+      { label: "BANKNIFTY", token: "260105", tradingSymbol: "BANKNIFTY" },
+      { label: "FINNIFTY", token: "257801", tradingSymbol: "FINNIFTY" },
+      { label: "INDIA VIX", token: "264969", tradingSymbol: "INDIA VIX" },
+      { label: "MIDCAP", token: "288009", tradingSymbol: "MIDCAP" },
+    ];
+
+    const result = fallbackIndices.map((idx) => {
+      const found = instruments.find((i) => i.instrumentToken === idx.token);
+      return {
+        label: idx.label,
+        token: idx.token,
+        tradingSymbol: found?.tradingSymbol || idx.tradingSymbol,
+        lastPrice: found?.lastPrice ? Number(found.lastPrice) : null,
+      };
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch indices" });
+  }
+});
+
 marketRouter.use(requireAuth);
 
 function enrichInstrument(inst: any) {
@@ -358,41 +392,7 @@ marketRouter.get("/history", async (req, res) => {
     console.warn(`[History] Broker history call failed for token ${token}:`, err.message);
   }
 
-  // Fallback: generate realistic synthetic candles so chart always works smoothly
-  const inst = await prisma.instrument.findUnique({ where: { instrumentToken: token } }).catch(() => null);
-  const basePrice = Number(inst?.lastPrice ?? 1000);
-  const fallbackBars = generateFallbackBars(basePrice, normInterval, from, to);
-  res.json(fallbackBars);
+  // Return empty list if historical data is unavailable in DB/broker
+  res.json([]);
 });
-
-function generateFallbackBars(basePrice: number, interval: string, from: string, to: string) {
-  const bars = [];
-  let price = basePrice > 0 ? basePrice : 1000;
-  const start = new Date(from).getTime();
-  const end = new Date(to).getTime() || Date.now();
-  let step = 60 * 1000;
-  if (interval === "5minute") step = 5 * 60 * 1000;
-  else if (interval === "15minute") step = 15 * 60 * 1000;
-  else if (interval === "60minute") step = 60 * 60 * 1000;
-  else if (interval === "day") step = 24 * 60 * 60 * 1000;
-
-  const count = Math.min(Math.max(Math.floor((end - start) / step), 40), 120);
-  const adjustedStart = end - count * step;
-
-  for (let i = 0; i < count; i++) {
-    const t = adjustedStart + i * step;
-    const change = (Math.random() - 0.495) * 0.007;
-    const open = Number(price.toFixed(2));
-    price = Number((open * (1 + change)).toFixed(2));
-    const close = price;
-    const high = Number((Math.max(open, close) * (1 + Math.random() * 0.003)).toFixed(2));
-    const low = Number((Math.min(open, close) * (1 - Math.random() * 0.003)).toFixed(2));
-    bars.push({
-      timestamp: new Date(t).toISOString(),
-      open, high, low, close,
-      volume: Math.floor(Math.random() * 50000 + 500),
-    });
-  }
-  return bars;
-}
 

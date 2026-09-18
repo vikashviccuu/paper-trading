@@ -161,6 +161,8 @@ export const MarketAPI = {
         page,
       },
     }),
+  indices: () => api.get<Array<{ label: string; token: string; tradingSymbol: string; lastPrice?: number | null }>>("/market/indices"),
+  stats: () => api.get<{ total: number; byExchange: any[]; bySegment: any[] }>("/market/stats"),
   quote: (tokens: string[]) => api.get<FullMarketQuote[]>("/market/quote", { params: { tokens: tokens.join(",") } }),
   kiteQuote: (instruments: string[]) => api.get<{ status: string; data: Record<string, any> }>("/market/quote", { params: { i: instruments.join(","), mode: "kite" } }),
   ohlc: (instruments: string[]) => api.get<{ status: string; data: Record<string, any> }>("/market/quote/ohlc", { params: { i: instruments.join(",") } }),
@@ -182,7 +184,8 @@ export const PortfolioAPI = {
 };
 
 export const OptionsAPI = {
-  chain: (underlying: string, expiry: string) =>
+  expiries: (underlying: string) => api.get<string[]>("/options/expiries", { params: { underlying } }),
+  chain: (underlying: string, expiry?: string) =>
     api.get("/options/chain", { params: { underlying, expiry } }),
 };
 

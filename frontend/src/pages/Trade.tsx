@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef, FormEvent } from "react";
 import { useLocation, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { createChart, IChartApi, ISeriesApi, CandlestickData } from "lightweight-charts";
-import { Instrument, MarketAPI, OrdersAPI, PortfolioAPI, api, FullMarketQuote } from "../services/api";
+import { Instrument, MarketAPI, OrdersAPI, PortfolioAPI, OptionsAPI, api, FullMarketQuote } from "../services/api";
 import { getSocket, Tick } from "../services/socket";
 
-const INDICES = [
+const DEFAULT_INDICES = [
   { label: "NIFTY 50",  token: "256265" },
   { label: "BANKNIFTY", token: "260105" },
   { label: "FINNIFTY",  token: "257801" },
@@ -12,21 +12,23 @@ const INDICES = [
   { label: "MIDCAP",    token: "288009" },
 ];
 
-const INITIAL_INDEX_DATA: Record<string, { ltp: number; close: number; chg: number; pct: number }> = {
-  "256265": { ltp: 23724.67, close: 23700.95, chg: 23.72, pct: 0.10 },
-  "260105": { ltp: 51200.00, close: 51080.00, chg: 120.00, pct: 0.23 },
-  "257801": { ltp: 23800.00, close: 23740.00, chg: 60.00, pct: 0.25 },
-  "264969": { ltp: 13.73, close: 13.72, chg: 0.01, pct: 0.07 },
-  "288009": { ltp: 12650.00, close: 12615.00, chg: 35.00, pct: 0.28 },
-};
-
 // ── Ticker bar ───────────────────────────────────────────────
 function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; currentIstTime?: string } | null }) {
-  const [prices, setPrices] = useState<Record<string, { ltp: number; close: number; chg: number; pct: number }>>(INITIAL_INDEX_DATA);
+  const [indices, setIndices] = useState<Array<{ label: string; token: string; tradingSymbol?: string }>>(DEFAULT_INDICES);
+  const [prices, setPrices] = useState<Record<string, { ltp: number; close: number; chg: number; pct: number }>>({});
 
   useEffect(() => {
-    // 1. Immediately query REST quote API so accurate prices display right away
-    const tokens = INDICES.map((i) => i.token);
+    MarketAPI.indices()
+      .then((res) => {
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setIndices(res.data.map((d) => ({ label: d.label, token: d.token, tradingSymbol: d.tradingSymbol })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const tokens = indices.map((i) => i.token);
     MarketAPI.quote(tokens)
       .then((res) => {
         if (Array.isArray(res.data) && res.data.length > 0) {
@@ -47,7 +49,7 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
       })
       .catch(() => {});
 
-    // 2. Subscribe to WebSocket ticks for real-time live updates
+    // Subscribe to WebSocket ticks for real-time live updates
     const s = getSocket();
     s.emit("subscribe", tokens);
     const onTick = (t: Tick) =>
@@ -68,12 +70,13 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
       });
     s.on("tick", onTick);
     return () => { s.off("tick", onTick); s.emit("unsubscribe", tokens); };
-  }, []);
+  }, [indices]);
 
   return (
     <div className="t-ticker">
-      {INDICES.map((idx, i) => {
-        const p = prices[idx.token] || INITIAL_INDEX_DATA[idx.token];
+      {indices.map((idx, i) => {
+        const p = prices[idx.token];
+        const hasData = Boolean(p && typeof p.ltp === "number" && p.ltp > 0);
         const up = p ? p.chg >= 0 : true;
         return (
           <div key={idx.token} style={{ display: "flex", alignItems: "center", gap: 24 }}>
@@ -81,14 +84,16 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
             <div className="t-tick" style={{ gap: 8 }}>
               <span className="lbl">{idx.label}</span>
               <span className="val" style={{ fontFamily: "var(--font-mono)", fontWeight: 800 }}>
-                {p ? p.ltp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                {hasData ? p!.ltp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
               </span>
-              {p && (
+              {hasData ? (
                 <span className={`chg ${up ? "up" : "dn"}`} style={{ fontFamily: "var(--font-mono)" }}>
-                  {up ? "+" : ""}{p.chg.toFixed(2)} ({up ? "+" : ""}{p.pct.toFixed(2)}%)
+                  {up ? "+" : ""}{p!.chg.toFixed(2)} ({up ? "+" : ""}{p!.pct.toFixed(2)}%)
                 </span>
+              ) : (
+                <span style={{ color: "#64748b", fontFamily: "var(--font-mono)", fontSize: 11 }}>—</span>
               )}
-              {p && (
+              {hasData && p!.close > 0 ? (
                 <span style={{
                   fontSize: 10,
                   color: "#94a3b8",
@@ -98,9 +103,9 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
                   borderRadius: 3,
                   border: "1px solid rgba(255, 255, 255, 0.06)"
                 }}>
-                  Close: ₹{p.close.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  Close: ₹{p!.close.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
-              )}
+              ) : null}
             </div>
           </div>
         );
@@ -140,41 +145,6 @@ function KiteStatusBar() {
   return null;
 }
 
-// ── Deterministic synthetic bar generator (prevents chart data reshaping/fluctuating) ──
-function generateSyntheticBars(basePrice: number, interval: string, token: string = ""): CandlestickData[] {
-  const bars: CandlestickData[] = [];
-  const now = Math.floor(Date.now() / 1000);
-
-  let stepSec = 60; // 1m default
-  let count = 120;
-  if (interval === "5minute" || interval === "5m") { stepSec = 300; count = 100; }
-  else if (interval === "15minute" || interval === "15m") { stepSec = 900; count = 90; }
-  else if (interval === "60minute" || interval === "60m" || interval === "1h") { stepSec = 3600; count = 80; }
-  else if (interval === "day" || interval === "1d") { stepSec = 86400; count = 100; }
-
-  let price = basePrice > 0 ? basePrice : 100;
-  const startTime = Math.floor((now - count * stepSec) / stepSec) * stepSec;
-
-  // Deterministic seed based on token so candles don't reshuffle on re-renders
-  let seed = (token ? token.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) : 42) + count;
-  function pseudoRandom() {
-    const x = Math.sin(seed++) * 10000;
-    return x - Math.floor(x);
-  }
-
-  for (let i = 0; i < count; i++) {
-    const time = (startTime + i * stepSec) as any;
-    const changePct = (pseudoRandom() - 0.495) * 0.005;
-    const open = price;
-    price = +(open * (1 + changePct)).toFixed(2);
-    const close = price;
-    const high = +(Math.max(open, close) * (1 + pseudoRandom() * 0.0025)).toFixed(2);
-    const low = +(Math.min(open, close) * (1 - pseudoRandom() * 0.0025)).toFixed(2);
-    bars.push({ time, open, high, low, close });
-  }
-  return bars;
-}
-
 // ── Live candlestick chart ───────────────────────────────────
 function LiveChart({ instrument, bars, timeframe }: { instrument: Instrument; bars: CandlestickData[]; timeframe: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -205,7 +175,13 @@ function LiveChart({ instrument, bars, timeframe }: { instrument: Instrument; ba
   }, []);
 
   useEffect(() => {
-    if (!series.current || !bars.length) return;
+    if (!series.current) return;
+    if (!bars.length) {
+      try {
+        series.current.setData([]);
+      } catch {}
+      return;
+    }
     try {
       const sorted = [...bars]
         .filter((b) => b && b.time != null && !isNaN(Number(b.close)))
@@ -319,9 +295,9 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
           </div>
           {buyLevels.slice(0, 5).map((b, idx) => (
             <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: "#e2e8f0" }}>
-              <span style={{ color: "#64748b", fontSize: 10 }}>{b.orders || 1}</span>
+              <span style={{ color: "#64748b", fontSize: 10 }}>{b.orders !== undefined ? b.orders : "—"}</span>
               <span>{(b.quantity || 0).toLocaleString("en-IN")}</span>
-              <span style={{ color: "#38bdf8", fontWeight: 700 }}>₹{Number(b.price || 0).toFixed(2)}</span>
+              <span style={{ color: "#38bdf8", fontWeight: 700 }}>{b.price ? `₹${Number(b.price).toFixed(2)}` : "—"}</span>
             </div>
           ))}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#38bdf8", marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
@@ -340,9 +316,9 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
           </div>
           {sellLevels.slice(0, 5).map((s, idx) => (
             <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: "#e2e8f0" }}>
-              <span style={{ color: "#f87171", fontWeight: 700 }}>₹{Number(s.price || 0).toFixed(2)}</span>
+              <span style={{ color: "#f87171", fontWeight: 700 }}>{s.price ? `₹${Number(s.price).toFixed(2)}` : "—"}</span>
               <span>{(s.quantity || 0).toLocaleString("en-IN")}</span>
-              <span style={{ color: "#64748b", fontSize: 10 }}>{s.orders || 1}</span>
+              <span style={{ color: "#64748b", fontSize: 10 }}>{s.orders !== undefined ? s.orders : "—"}</span>
             </div>
           ))}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#f87171", marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
@@ -358,25 +334,25 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>VWAP / Avg</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#f8fafc", fontFamily: "var(--font-mono)" }}>
-            ₹{Number(quote.averagePrice || quote.lastPrice || 0).toFixed(2)}
+            {quote.averagePrice || quote.lastPrice ? `₹${Number(quote.averagePrice || quote.lastPrice).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Lower Limit</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
-            ₹{Number(quote.lowerCircuitLimit || (quote.close * 0.9)).toFixed(2)}
+            {quote.lowerCircuitLimit ? `₹${Number(quote.lowerCircuitLimit).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Upper Limit</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
-            ₹{Number(quote.upperCircuitLimit || (quote.close * 1.1)).toFixed(2)}
+            {quote.upperCircuitLimit ? `₹${Number(quote.upperCircuitLimit).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Open Interest</div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", fontFamily: "var(--font-mono)" }}>
-            {quote.oi ? quote.oi.toLocaleString("en-IN") : "—"}
+            {quote.oi !== undefined && quote.oi !== null ? Number(quote.oi).toLocaleString("en-IN") : "—"}
           </div>
         </div>
       </div>
@@ -385,16 +361,23 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
 }
 
 // ── Main terminal ────────────────────────────────────────────
-export default function Terminal() {
+function Terminal() {
   const location  = useLocation();
   const navigate  = useNavigate();
   const [sp]      = useSearchParams();
   const contestId = sp.get("contestId") ?? undefined;
   const isAdmin   = location.pathname.startsWith("/admin");
 
-  const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-  const defaultApiKey = isLocal ? "ouuv4g2r3iyafu5c" : "jfwd2gvwal8pq0rp";
-  const [loginUrl, setLoginUrl] = useState(`https://kite.zerodha.com/connect/login?api_key=${defaultApiKey}&v=3`);
+  const [loginUrl, setLoginUrl] = useState("");
+  const [dbTotalCount, setDbTotalCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    MarketAPI.stats()
+      .then((res) => {
+        if (res.data?.total !== undefined) setDbTotalCount(Number(res.data.total));
+      })
+      .catch(() => {});
+  }, []);
 
   // Zerodha redirects to /trade?status=success&request_token=...
   // Exchange token silently then reload clean URL
@@ -502,83 +485,71 @@ export default function Terminal() {
 
   // Watchlist Market Depth Modal state
   const [depthItem,      setDepthItem]      = useState<Instrument | null>(null);
+  const [depthQuote,     setDepthQuote]     = useState<FullMarketQuote | null>(null);
+  const [depthLoading,   setDepthLoading]   = useState(false);
+
+  useEffect(() => {
+    if (!depthItem) {
+      setDepthQuote(null);
+      return;
+    }
+    setDepthLoading(true);
+    MarketAPI.quote([depthItem.instrumentToken])
+      .then((r) => {
+        if (r.data && r.data[0]) {
+          setDepthQuote(r.data[0]);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setDepthLoading(false));
+  }, [depthItem?.instrumentToken]);
 
   // Watchlist Option Chain Modal state
   const [chainItem,      setChainItem]      = useState<Instrument | null>(null);
-  const [chainExpiry,    setChainExpiry]    = useState<string>("24-SEP-2026");
+  const [chainExpiries,  setChainExpiries]  = useState<string[]>([]);
+  const [chainExpiry,    setChainExpiry]    = useState<string>("");
+  const [chainRows,      setChainRows]      = useState<any[]>([]);
+  const [chainLoading,   setChainLoading]   = useState<boolean>(false);
 
-  function generateOptionChain(spotPrice: number) {
-    const basePrice = spotPrice > 0 ? spotPrice : 24000;
-    const step = basePrice > 15000 ? 100 : basePrice > 2000 ? 50 : 20;
-    const atmStrike = Math.round(basePrice / step) * step;
-
-    const strikes = [];
-    let totalCallOI = 0;
-    let totalPutOI = 0;
-
-    for (let i = -7; i <= 7; i++) {
-      const strike = atmStrike + i * step;
-      const isATM = strike === atmStrike;
-      const isCallITM = strike < basePrice;
-      const isPutITM = strike > basePrice;
-
-      const callIntrinsic = Math.max(0, basePrice - strike);
-      const callTimeVal = Math.max(5, (step * 2.5) - Math.abs(i) * (step * 0.25));
-      const callLtp = +(callIntrinsic + callTimeVal).toFixed(2);
-      const callChg = +( (i < 0 ? 1 : -1) * (12.5 + Math.abs(i) * 2.1) ).toFixed(2);
-      const callOI = Math.max(1000, Math.floor(150000 - Math.abs(i) * 12000 + (i === 0 ? 45000 : 0)));
-      const callVol = Math.floor(callOI * 0.35);
-      const callIv = +(15.2 + Math.abs(i) * 0.4).toFixed(1);
-
-      const putIntrinsic = Math.max(0, strike - basePrice);
-      const putTimeVal = Math.max(5, (step * 2.5) - Math.abs(i) * (step * 0.25));
-      const putLtp = +(putIntrinsic + putTimeVal).toFixed(2);
-      const putChg = +( (i > 0 ? 1 : -1) * (14.2 + Math.abs(i) * 1.8) ).toFixed(2);
-      const putOI = Math.max(1000, Math.floor(140000 - Math.abs(i) * 11000 + (i === 0 ? 52000 : 0)));
-      const putVol = Math.floor(putOI * 0.38);
-      const putIv = +(16.1 + Math.abs(i) * 0.5).toFixed(1);
-
-      totalCallOI += callOI;
-      totalPutOI += putOI;
-
-      strikes.push({
-        strike, isATM, isCallITM, isPutITM,
-        callLtp, callChg, callOI, callVol, callIv,
-        putLtp, putChg, putOI, putVol, putIv
-      });
+  // Load available expiries for underlying from database
+  useEffect(() => {
+    if (!chainItem) {
+      setChainExpiries([]);
+      setChainExpiry("");
+      setChainRows([]);
+      return;
     }
+    const underlying = chainItem.tradingSymbol.replace(/[0-9].*$/, "").trim() || chainItem.tradingSymbol;
+    OptionsAPI.expiries(underlying)
+      .then((res: any) => {
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setChainExpiries(res.data);
+          setChainExpiry(res.data[0]);
+        } else {
+          setChainExpiries([]);
+          setChainExpiry("");
+        }
+      })
+      .catch(() => {
+        setChainExpiries([]);
+        setChainExpiry("");
+      });
+  }, [chainItem?.tradingSymbol]);
 
-    const pcr = totalCallOI > 0 ? +(totalPutOI / totalCallOI).toFixed(2) : 1.0;
-    const sentiment = pcr > 1.2 ? "BULLISH" : pcr < 0.8 ? "BEARISH" : "NEUTRAL";
-
-    return { strikes, atmStrike, totalCallOI, totalPutOI, pcr, sentiment };
-  }
-
-  function generateMarketDepth(price: number) {
-    const basePrice = price > 0 ? price : 100;
-    const tick = 0.05;
-    
-    const bids = [
-      { orders: 12, qty: 1450, price: +(basePrice - tick * 1).toFixed(2) },
-      { orders: 28, qty: 3200, price: +(basePrice - tick * 2).toFixed(2) },
-      { orders: 45, qty: 5800, price: +(basePrice - tick * 3).toFixed(2) },
-      { orders: 19, qty: 2100, price: +(basePrice - tick * 4).toFixed(2) },
-      { orders: 62, qty: 8900, price: +(basePrice - tick * 5).toFixed(2) },
-    ];
-
-    const asks = [
-      { price: +(basePrice + tick * 1).toFixed(2), qty: 1200, orders: 15 },
-      { price: +(basePrice + tick * 2).toFixed(2), qty: 2900, orders: 31 },
-      { price: +(basePrice + tick * 3).toFixed(2), qty: 4400, orders: 22 },
-      { price: +(basePrice + tick * 4).toFixed(2), qty: 1800, orders: 11 },
-      { price: +(basePrice + tick * 5).toFixed(2), qty: 7300, orders: 54 },
-    ];
-
-    const totalBidQty = bids.reduce((acc, b) => acc + b.qty, 0);
-    const totalAskQty = asks.reduce((acc, a) => acc + a.qty, 0);
-
-    return { bids, asks, totalBidQty, totalAskQty };
-  }
+  // Load option chain rows from database/broker
+  useEffect(() => {
+    if (!chainItem) return;
+    setChainLoading(true);
+    const underlying = chainItem.tradingSymbol.replace(/[0-9].*$/, "").trim() || chainItem.tradingSymbol;
+    OptionsAPI.chain(underlying, chainExpiry || undefined)
+      .then((res: any) => {
+        setChainRows(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => {
+        setChainRows([]);
+      })
+      .finally(() => setChainLoading(false));
+  }, [chainItem?.tradingSymbol, chainExpiry]);
 
   // fetch historical data for modal
   useEffect(() => {
@@ -635,14 +606,10 @@ export default function Terminal() {
           setBars(mapped);
           if (mapped.length) setPrevClose(mapped[mapped.length - 1].close);
         } else {
-          const synthetic = generateSyntheticBars(ltp || Number(instrument.lastPrice || 1000), tf, instrument.instrumentToken);
-          setBars(synthetic);
-          if (synthetic.length) setPrevClose(synthetic[synthetic.length - 1].close);
+          setBars([]);
         }
       }).catch(() => {
-        const synthetic = generateSyntheticBars(ltp || Number(instrument.lastPrice || 1000), tf, instrument.instrumentToken);
-        setBars(synthetic);
-        if (synthetic.length) setPrevClose(synthetic[synthetic.length - 1].close);
+        setBars([]);
       });
   }, [instrument?.instrumentToken, tf]);
 
@@ -771,8 +738,8 @@ export default function Terminal() {
     return s + pnl;
   }, 0);
 
-  const deployedPct = wallet ? Math.min(100, positions.reduce((s: number, p: any) => s + Math.abs(+p.quantity) * +(p.averagePrice ?? p.avgPrice ?? 0), 0) / wallet * 100) : 0;
-  const margin      = instrument ? (+(displayLtp ?? 0) * qty * (instrument.lotSize || 1) * 0.12) : 0;
+  const deployedPct = wallet && wallet > 0 ? Math.min(100, positions.reduce((s: number, p: any) => s + Math.abs(+p.quantity) * +(p.averagePrice ?? p.avgPrice ?? 0), 0) / wallet * 100) : 0;
+  const margin      = instrument && displayLtp ? (Number(displayLtp) * qty * (instrument.lotSize || 1) * (ptype === "DELIVERY" ? 1.0 : 0.2)) : 0;
 
   return (
     <div className="t-root">
@@ -841,7 +808,15 @@ export default function Terminal() {
             {brokerMode === "ZERODHA" ? "Switch to Demo" : "Switch to Live"}
           </button>
           <a
-            href={loginUrl}
+            href={loginUrl || "#"}
+            onClick={(e) => {
+              if (!loginUrl) {
+                e.preventDefault();
+                api.get("/broker/zerodha/login-url")
+                  .then((r) => { if (r.data?.url) window.location.href = r.data.url; })
+                  .catch(() => setMsg({ text: "Login URL unavailable. Please check broker connection.", ok: false }));
+              }
+            }}
             style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "none", padding: "3px 8px", border: "1px solid var(--border)", borderRadius: 4 }}
           >Re-auth</a>
         </div>
@@ -1038,7 +1013,7 @@ export default function Terminal() {
                         Market Watch
                       </span>
                       <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, background: "rgba(37,99,235,0.2)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" }}>
-                        61,000+ SYMBOLS
+                        {dbTotalCount !== null ? `${dbTotalCount.toLocaleString()} SYMBOLS` : "— SYMBOLS"}
                       </span>
                     </div>
                     <button
@@ -1080,7 +1055,7 @@ export default function Terminal() {
                   <div style={{ position: "relative", marginBottom: 10 }}>
                     <input
                       className="t-search"
-                      placeholder="Search 60,000+ symbols (e.g. RELIANCE, NIFTY, CRUDE, 24000 CE)…"
+                      placeholder="Search symbols from database (e.g. RELIANCE, NIFTY, CRUDE, CE/PE)…"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       style={{ marginBottom: 0, paddingRight: query ? 28 : 10 }}
@@ -2050,14 +2025,20 @@ export default function Terminal() {
 
       {/* Market Depth Modal */}
       {depthItem && (() => {
-        const liveP = wPrices[depthItem.instrumentToken]?.ltp || Number(depthItem.lastPrice) || ltp || 100;
-        const closeP = wPrices[depthItem.instrumentToken]?.close || Number((depthItem as any).closePrice || (depthItem as any).close) || liveP;
-        const depthData = generateMarketDepth(liveP);
-        const totalQty = depthData.totalBidQty + depthData.totalAskQty;
-        const buyPct = totalQty > 0 ? ((depthData.totalBidQty / totalQty) * 100).toFixed(1) : "50.0";
-        const sellPct = totalQty > 0 ? ((depthData.totalAskQty / totalQty) * 100).toFixed(1) : "50.0";
-        const upperCircuit = +(liveP * 1.10).toFixed(2);
-        const lowerCircuit = +(liveP * 0.90).toFixed(2);
+        const liveP = depthQuote?.lastPrice || wPrices[depthItem.instrumentToken]?.ltp || Number(depthItem.lastPrice) || ltp || 0;
+        const closeP = depthQuote?.close || wPrices[depthItem.instrumentToken]?.close || Number((depthItem as any).closePrice || (depthItem as any).close) || 0;
+        const buyLevels = depthQuote?.depth?.buy || [];
+        const sellLevels = depthQuote?.depth?.sell || [];
+        const totalBidQty = depthQuote?.buyQuantity || buyLevels.reduce((acc, b) => acc + (b.quantity || 0), 0);
+        const totalAskQty = depthQuote?.sellQuantity || sellLevels.reduce((acc, s) => acc + (s.quantity || 0), 0);
+        const totalQty = totalBidQty + totalAskQty;
+        const buyPct = totalQty > 0 ? ((totalBidQty / totalQty) * 100).toFixed(1) : "0.0";
+        const sellPct = totalQty > 0 ? ((totalAskQty / totalQty) * 100).toFixed(1) : "0.0";
+        const upperCircuit = depthQuote?.upperCircuitLimit;
+        const lowerCircuit = depthQuote?.lowerCircuitLimit;
+        const bestBid = buyLevels[0]?.price;
+        const bestAsk = sellLevels[0]?.price;
+        const spread = (bestAsk && bestBid) ? (bestAsk - bestBid).toFixed(2) : "—";
 
         return (
           <div style={{
@@ -2093,10 +2074,10 @@ export default function Terminal() {
 
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: "#38bdf8", fontFamily: "var(--font-mono)" }}>
-                    ₹{liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {liveP > 0 ? `₹${liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                   </div>
                   <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "var(--font-mono)", marginTop: 2 }}>
-                    Last Close: ₹{closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    Last Close: {closeP > 0 ? `₹${closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                   </div>
                   <button
                     onClick={() => setDepthItem(null)}
@@ -2110,8 +2091,8 @@ export default function Terminal() {
               {/* Buy / Sell Liquidity Meter Bar */}
               <div style={{ padding: "14px 20px", background: "rgba(0,0,0,0.15)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
-                  <span style={{ color: "#4ade80" }}>BUY {buyPct}% ({depthData.totalBidQty.toLocaleString()} Qty)</span>
-                  <span style={{ color: "#f43f5e" }}>SELL {sellPct}% ({depthData.totalAskQty.toLocaleString()} Qty)</span>
+                  <span style={{ color: "#4ade80" }}>BUY {buyPct}% ({totalBidQty.toLocaleString()} Qty)</span>
+                  <span style={{ color: "#f43f5e" }}>SELL {sellPct}% ({totalAskQty.toLocaleString()} Qty)</span>
                 </div>
                 <div style={{ height: 6, borderRadius: 3, background: "rgba(244, 63, 94, 0.4)", overflow: "hidden", display: "flex" }}>
                   <div style={{ width: `${buyPct}%`, background: "linear-gradient(90deg, #16a34a, #4ade80)", transition: "width 0.3s" }} />
@@ -2134,18 +2115,26 @@ export default function Terminal() {
                       </tr>
                     </thead>
                     <tbody>
-                      {depthData.bids.map((b, i) => (
-                        <tr key={i} style={{ background: "rgba(34, 197, 94, 0.04)" }}>
-                          <td style={{ padding: "6px 2px", color: "#94a3b8", fontFamily: "var(--font-mono)" }}>{b.orders}</td>
-                          <td style={{ padding: "6px 2px", color: "#cbd5e1", textAlign: "right", fontFamily: "var(--font-mono)" }}>{b.qty.toLocaleString()}</td>
-                          <td style={{ padding: "6px 2px", color: "#4ade80", fontWeight: 700, textAlign: "right", fontFamily: "var(--font-mono)" }}>₹{b.price.toFixed(2)}</td>
+                      {buyLevels.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ padding: "16px 2px", textAlign: "center", color: "#64748b" }}>
+                            {depthLoading ? "Loading depth..." : "No bid depth available"}
+                          </td>
                         </tr>
-                      ))}
+                      ) : (
+                        buyLevels.slice(0, 5).map((b, i) => (
+                          <tr key={i} style={{ background: "rgba(34, 197, 94, 0.04)" }}>
+                            <td style={{ padding: "6px 2px", color: "#94a3b8", fontFamily: "var(--font-mono)" }}>{b.orders !== undefined ? b.orders : "—"}</td>
+                            <td style={{ padding: "6px 2px", color: "#cbd5e1", textAlign: "right", fontFamily: "var(--font-mono)" }}>{(b.quantity || 0).toLocaleString()}</td>
+                            <td style={{ padding: "6px 2px", color: "#4ade80", fontWeight: 700, textAlign: "right", fontFamily: "var(--font-mono)" }}>{b.price ? `₹${Number(b.price).toFixed(2)}` : "—"}</td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 11, fontWeight: 700 }}>
                     <span style={{ color: "#94a3b8" }}>Total Bid Qty</span>
-                    <span style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{depthData.totalBidQty.toLocaleString()}</span>
+                    <span style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{totalBidQty.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -2163,18 +2152,26 @@ export default function Terminal() {
                       </tr>
                     </thead>
                     <tbody>
-                      {depthData.asks.map((a, i) => (
-                        <tr key={i} style={{ background: "rgba(239, 68, 68, 0.04)" }}>
-                          <td style={{ padding: "6px 2px", color: "#f43f5e", fontWeight: 700, fontFamily: "var(--font-mono)" }}>₹{a.price.toFixed(2)}</td>
-                          <td style={{ padding: "6px 2px", color: "#cbd5e1", textAlign: "right", fontFamily: "var(--font-mono)" }}>{a.qty.toLocaleString()}</td>
-                          <td style={{ padding: "6px 2px", color: "#94a3b8", textAlign: "right", fontFamily: "var(--font-mono)" }}>{a.orders}</td>
+                      {sellLevels.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ padding: "16px 2px", textAlign: "center", color: "#64748b" }}>
+                            {depthLoading ? "Loading depth..." : "No ask depth available"}
+                          </td>
                         </tr>
-                      ))}
+                      ) : (
+                        sellLevels.slice(0, 5).map((a, i) => (
+                          <tr key={i} style={{ background: "rgba(239, 68, 68, 0.04)" }}>
+                            <td style={{ padding: "6px 2px", color: "#f43f5e", fontWeight: 700, fontFamily: "var(--font-mono)" }}>{a.price ? `₹${Number(a.price).toFixed(2)}` : "—"}</td>
+                            <td style={{ padding: "6px 2px", color: "#cbd5e1", textAlign: "right", fontFamily: "var(--font-mono)" }}>{(a.quantity || 0).toLocaleString()}</td>
+                            <td style={{ padding: "6px 2px", color: "#94a3b8", textAlign: "right", fontFamily: "var(--font-mono)" }}>{a.orders !== undefined ? a.orders : "—"}</td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 11, fontWeight: 700 }}>
                     <span style={{ color: "#94a3b8" }}>Total Ask Qty</span>
-                    <span style={{ color: "#f43f5e", fontFamily: "var(--font-mono)" }}>{depthData.totalAskQty.toLocaleString()}</span>
+                    <span style={{ color: "#f43f5e", fontFamily: "var(--font-mono)" }}>{totalAskQty.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -2183,15 +2180,21 @@ export default function Terminal() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: 14, background: "rgba(0,0,0,0.2)" }}>
                 <div style={{ background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)" }}>
                   <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Lower Circuit</div>
-                  <div style={{ fontSize: 13, color: "#f43f5e", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>₹{lowerCircuit.toFixed(2)}</div>
+                  <div style={{ fontSize: 13, color: "#f43f5e", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                    {lowerCircuit ? `₹${Number(lowerCircuit).toFixed(2)}` : "—"}
+                  </div>
                 </div>
                 <div style={{ background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)" }}>
                   <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Upper Circuit</div>
-                  <div style={{ fontSize: 13, color: "#4ade80", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>₹{upperCircuit.toFixed(2)}</div>
+                  <div style={{ fontSize: 13, color: "#4ade80", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                    {upperCircuit ? `₹${Number(upperCircuit).toFixed(2)}` : "—"}
+                  </div>
                 </div>
                 <div style={{ background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)" }}>
                   <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Spread</div>
-                  <div style={{ fontSize: 13, color: "#38bdf8", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>₹0.05</div>
+                  <div style={{ fontSize: 13, color: "#38bdf8", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                    {spread !== "—" ? `₹${spread}` : "—"}
+                  </div>
                 </div>
               </div>
 
@@ -2242,10 +2245,12 @@ export default function Terminal() {
 
       {/* Option Chain Modal */}
       {chainItem && (() => {
-        const liveP = wPrices[chainItem.instrumentToken]?.ltp || Number(chainItem.lastPrice) || ltp || 24850;
+        const liveP = wPrices[chainItem.instrumentToken]?.ltp || Number(chainItem.lastPrice) || ltp || 0;
         const closeP = wPrices[chainItem.instrumentToken]?.close || Number((chainItem as any).closePrice || (chainItem as any).close) || liveP;
-        const chain = generateOptionChain(liveP);
-        const expiries = ["24-SEP-2026", "01-OCT-2026", "08-OCT-2026", "29-OCT-2026"];
+        const totalCallOI = chainRows.reduce((acc, r) => acc + Number(r.call?.oi || 0), 0);
+        const totalPutOI = chainRows.reduce((acc, r) => acc + Number(r.put?.oi || 0), 0);
+        const pcr = totalCallOI > 0 ? +(totalPutOI / totalCallOI).toFixed(2) : 0;
+        const sentiment = pcr > 1.2 ? "BULLISH" : (pcr < 0.8 && pcr > 0) ? "BEARISH" : "NEUTRAL";
 
         return (
           <div style={{
@@ -2276,9 +2281,8 @@ export default function Terminal() {
                       </span>
                     </div>
                     <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3, display: "flex", alignItems: "center", gap: 14 }}>
-                      <span>Spot LTP: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>₹{liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
-                      <span>Last Close: <strong style={{ color: "#cbd5e1", fontFamily: "var(--font-mono)" }}>₹{closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
-                      <span>ATM Strike: <strong style={{ color: "#fbbf24", fontFamily: "var(--font-mono)" }}>{chain.atmStrike}</strong></span>
+                      <span>Spot LTP: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{liveP > 0 ? `₹${liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
+                      <span>Last Close: <strong style={{ color: "#cbd5e1", fontFamily: "var(--font-mono)" }}>{closeP > 0 ? `₹${closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -2287,19 +2291,23 @@ export default function Terminal() {
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>Expiry:</span>
-                    <select
-                      value={chainExpiry}
-                      onChange={(e) => setChainExpiry(e.target.value)}
-                      style={{
-                        background: "#161b22", border: "1px solid rgba(255,255,255,0.15)",
-                        color: "#f8fafc", padding: "6px 12px", borderRadius: 6,
-                        fontSize: 12, fontWeight: 700, outline: "none", cursor: "pointer"
-                      }}
-                    >
-                      {expiries.map((exp) => (
-                        <option key={exp} value={exp}>{exp}</option>
-                      ))}
-                    </select>
+                    {chainExpiries.length > 0 ? (
+                      <select
+                        value={chainExpiry}
+                        onChange={(e) => setChainExpiry(e.target.value)}
+                        style={{
+                          background: "#161b22", border: "1px solid rgba(255,255,255,0.15)",
+                          color: "#f8fafc", padding: "6px 12px", borderRadius: 6,
+                          fontSize: 12, fontWeight: 700, outline: "none", cursor: "pointer"
+                        }}
+                      >
+                        {chainExpiries.map((exp) => (
+                          <option key={exp} value={exp}>{exp}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span style={{ fontSize: 11, color: "#64748b" }}>No expiries in DB</span>
+                    )}
                   </div>
 
                   <button
@@ -2319,20 +2327,22 @@ export default function Terminal() {
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <span style={{ color: "#94a3b8" }}>
-                    Put-Call Ratio (PCR): <strong style={{ color: chain.pcr >= 1 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)" }}>{chain.pcr}</strong>
+                    Put-Call Ratio (PCR): <strong style={{ color: pcr >= 1 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)" }}>{pcr > 0 ? pcr : "—"}</strong>
                   </span>
-                  <span style={{
-                    padding: "2px 8px", borderRadius: 4, fontSize: 10,
-                    background: chain.sentiment === "BULLISH" ? "rgba(34, 197, 94, 0.15)" : chain.sentiment === "BEARISH" ? "rgba(239, 68, 68, 0.15)" : "rgba(148, 163, 184, 0.15)",
-                    color: chain.sentiment === "BULLISH" ? "#4ade80" : chain.sentiment === "BEARISH" ? "#f43f5e" : "#cbd5e1"
-                  }}>
-                    {chain.sentiment} SENTIMENT
-                  </span>
+                  {pcr > 0 && (
+                    <span style={{
+                      padding: "2px 8px", borderRadius: 4, fontSize: 10,
+                      background: sentiment === "BULLISH" ? "rgba(34, 197, 94, 0.15)" : sentiment === "BEARISH" ? "rgba(239, 68, 68, 0.15)" : "rgba(148, 163, 184, 0.15)",
+                      color: sentiment === "BULLISH" ? "#4ade80" : sentiment === "BEARISH" ? "#f43f5e" : "#cbd5e1"
+                    }}>
+                      {sentiment} SENTIMENT
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ color: "#94a3b8", display: "flex", gap: 20 }}>
-                  <span>Total Call OI: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{chain.totalCallOI.toLocaleString()}</strong></span>
-                  <span>Total Put OI: <strong style={{ color: "#f43f5e", fontFamily: "var(--font-mono)" }}>{chain.totalPutOI.toLocaleString()}</strong></span>
+                  <span>Total Call OI: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{totalCallOI > 0 ? totalCallOI.toLocaleString() : "—"}</strong></span>
+                  <span>Total Put OI: <strong style={{ color: "#f43f5e", fontFamily: "var(--font-mono)" }}>{totalPutOI > 0 ? totalPutOI.toLocaleString() : "—"}</strong></span>
                 </div>
               </div>
 
@@ -2373,104 +2383,136 @@ export default function Terminal() {
                     </tr>
                   </thead>
                   <tbody>
-                    {chain.strikes.map((row) => {
-                      const callBg = row.isCallITM ? "rgba(34, 197, 94, 0.08)" : "transparent";
-                      const putBg = row.isPutITM ? "rgba(239, 68, 68, 0.08)" : "transparent";
-                      const strikeBg = row.isATM ? "rgba(234, 179, 8, 0.25)" : "#161b22";
+                    {chainLoading ? (
+                      <tr>
+                        <td colSpan={13} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>
+                          ⏳ Loading option contracts from database...
+                        </td>
+                      </tr>
+                    ) : chainRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={13} style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
+                          No option contracts found in database for {chainItem.tradingSymbol}{chainExpiry ? ` (${chainExpiry})` : ""}.
+                        </td>
+                      </tr>
+                    ) : (
+                      chainRows.map((row) => {
+                        const callLtp = Number(row.call?.lastPrice || 0);
+                        const putLtp = Number(row.put?.lastPrice || 0);
+                        const strike = Number(row.strike || 0);
+                        const isATM = liveP > 0 && Math.abs(strike - liveP) < 50;
+                        const isCallITM = liveP > 0 && strike < liveP;
+                        const isPutITM = liveP > 0 && strike > liveP;
+                        const callBg = isCallITM ? "rgba(34, 197, 94, 0.08)" : "transparent";
+                        const putBg = isPutITM ? "rgba(239, 68, 68, 0.08)" : "transparent";
+                        const strikeBg = isATM ? "rgba(234, 179, 8, 0.25)" : "#161b22";
 
-                      return (
-                        <tr
-                          key={row.strike}
-                          style={{
-                            borderBottom: row.isATM ? "2px solid #eab308" : "1px solid rgba(255,255,255,0.03)",
-                            transition: "background 0.1s"
-                          }}
-                        >
-                          {/* Calls Data */}
-                          <td style={{ padding: "7px 8px", background: callBg }}>
-                            <button
-                              onClick={() => {
-                                setInstrument({
-                                  ...chainItem,
-                                  tradingSymbol: `${chainItem.tradingSymbol}${row.strike}CE`,
-                                  segment: "OPTIONS"
-                                });
-                                setSide("BUY");
-                                setChainItem(null);
-                              }}
-                              style={{
-                                padding: "2px 6px", borderRadius: 4, border: "none",
-                                background: "rgba(34, 197, 94, 0.2)", color: "#4ade80",
-                                fontWeight: 700, fontSize: 10, cursor: "pointer"
-                              }}
-                            >
-                              BUY CE
-                            </button>
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", color: "#94a3b8", fontFamily: "var(--font-mono)", background: callBg }}>
-                            {row.callOI.toLocaleString()}
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", color: "#64748b", fontFamily: "var(--font-mono)", background: callBg }}>
-                            {row.callVol.toLocaleString()}
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", color: "#cbd5e1", fontFamily: "var(--font-mono)", background: callBg }}>
-                            {row.callIv}%
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: row.callChg >= 0 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)", background: callBg }}>
-                            {row.callChg >= 0 ? "+" : ""}{row.callChg}%
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800, color: "#4ade80", fontFamily: "var(--font-mono)", background: callBg, borderRight: "1px solid rgba(255,255,255,0.1)" }}>
-                            ₹{row.callLtp.toFixed(2)}
-                          </td>
+                        return (
+                          <tr
+                            key={strike}
+                            style={{
+                              borderBottom: isATM ? "2px solid #eab308" : "1px solid rgba(255,255,255,0.03)",
+                              transition: "background 0.1s"
+                            }}
+                          >
+                            {/* Calls Data */}
+                            <td style={{ padding: "7px 8px", background: callBg }}>
+                              {row.call ? (
+                                <button
+                                  onClick={() => {
+                                    setInstrument({
+                                      id: row.call.instrumentToken || `${chainItem.id}-${strike}-CE`,
+                                      instrumentToken: row.call.instrumentToken || `${chainItem.instrumentToken}`,
+                                      tradingSymbol: row.call.tradingSymbol || `${chainItem.tradingSymbol}${strike}CE`,
+                                      exchange: chainItem.exchange || "NFO",
+                                      segment: "OPTIONS",
+                                      lotSize: chainItem.lotSize || 1,
+                                      lastPrice: callLtp,
+                                    });
+                                    setSide("BUY");
+                                    setChainItem(null);
+                                  }}
+                                  style={{
+                                    padding: "2px 6px", borderRadius: 4, border: "none",
+                                    background: "rgba(34, 197, 94, 0.2)", color: "#4ade80",
+                                    fontWeight: 700, fontSize: 10, cursor: "pointer"
+                                  }}
+                                >
+                                  BUY CE
+                                </button>
+                              ) : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#94a3b8", fontFamily: "var(--font-mono)", background: callBg }}>
+                              {row.call?.oi !== undefined && row.call?.oi !== null ? Number(row.call.oi).toLocaleString() : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#64748b", fontFamily: "var(--font-mono)", background: callBg }}>
+                              {row.call?.volume !== undefined && row.call?.volume !== null ? Number(row.call.volume).toLocaleString() : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#cbd5e1", fontFamily: "var(--font-mono)", background: callBg }}>
+                              {row.call?.iv ? `${Number(row.call.iv).toFixed(1)}%` : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: (row.call?.netChange || 0) >= 0 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)", background: callBg }}>
+                              {row.call?.changePercent !== undefined ? `${Number(row.call.changePercent).toFixed(2)}%` : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800, color: "#4ade80", fontFamily: "var(--font-mono)", background: callBg, borderRight: "1px solid rgba(255,255,255,0.1)" }}>
+                              {callLtp > 0 ? `₹${callLtp.toFixed(2)}` : "—"}
+                            </td>
 
-                          {/* Strike Price Column */}
-                          <td style={{
-                            padding: "7px 12px", textAlign: "center", fontWeight: 800,
-                            color: row.isATM ? "#fbbf24" : "#f8fafc", background: strikeBg,
-                            fontFamily: "var(--font-mono)", borderRight: "1px solid rgba(255,255,255,0.1)"
-                          }}>
-                            {row.strike} {row.isATM && <span style={{ fontSize: 9, background: "#eab308", color: "#000", padding: "1px 4px", borderRadius: 3, marginLeft: 4, fontWeight: 900 }}>ATM</span>}
-                          </td>
+                            {/* Strike Price Column */}
+                            <td style={{
+                              padding: "7px 12px", textAlign: "center", fontWeight: 800,
+                              color: isATM ? "#fbbf24" : "#f8fafc", background: strikeBg,
+                              fontFamily: "var(--font-mono)", borderRight: "1px solid rgba(255,255,255,0.1)"
+                            }}>
+                              {strike} {isATM && <span style={{ fontSize: 9, background: "#eab308", color: "#000", padding: "1px 4px", borderRadius: 3, marginLeft: 4, fontWeight: 900 }}>ATM</span>}
+                            </td>
 
-                          {/* Puts Data */}
-                          <td style={{ padding: "7px 8px", textAlign: "left", fontWeight: 800, color: "#f43f5e", fontFamily: "var(--font-mono)", background: putBg }}>
-                            ₹{row.putLtp.toFixed(2)}
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: row.putChg >= 0 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)", background: putBg }}>
-                            {row.putChg >= 0 ? "+" : ""}{row.putChg}%
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", color: "#cbd5e1", fontFamily: "var(--font-mono)", background: putBg }}>
-                            {row.putIv}%
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", color: "#64748b", fontFamily: "var(--font-mono)", background: putBg }}>
-                            {row.putVol.toLocaleString()}
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", color: "#94a3b8", fontFamily: "var(--font-mono)", background: putBg }}>
-                            {row.putOI.toLocaleString()}
-                          </td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", background: putBg }}>
-                            <button
-                              onClick={() => {
-                                setInstrument({
-                                  ...chainItem,
-                                  tradingSymbol: `${chainItem.tradingSymbol}${row.strike}PE`,
-                                  segment: "OPTIONS"
-                                });
-                                setSide("BUY");
-                                setChainItem(null);
-                              }}
-                              style={{
-                                padding: "2px 6px", borderRadius: 4, border: "none",
-                                background: "rgba(239, 68, 68, 0.2)", color: "#f43f5e",
-                                fontWeight: 700, fontSize: 10, cursor: "pointer"
-                              }}
-                            >
-                              BUY PE
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            {/* Puts Data */}
+                            <td style={{ padding: "7px 8px", textAlign: "left", fontWeight: 800, color: "#f43f5e", fontFamily: "var(--font-mono)", background: putBg }}>
+                              {putLtp > 0 ? `₹${putLtp.toFixed(2)}` : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: (row.put?.netChange || 0) >= 0 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)", background: putBg }}>
+                              {row.put?.changePercent !== undefined ? `${Number(row.put.changePercent).toFixed(2)}%` : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#cbd5e1", fontFamily: "var(--font-mono)", background: putBg }}>
+                              {row.put?.iv ? `${Number(row.put.iv).toFixed(1)}%` : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#64748b", fontFamily: "var(--font-mono)", background: putBg }}>
+                              {row.put?.volume !== undefined && row.put?.volume !== null ? Number(row.put.volume).toLocaleString() : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#94a3b8", fontFamily: "var(--font-mono)", background: putBg }}>
+                              {row.put?.oi !== undefined && row.put?.oi !== null ? Number(row.put.oi).toLocaleString() : "—"}
+                            </td>
+                            <td style={{ padding: "7px 8px", textAlign: "right", background: putBg }}>
+                              {row.put ? (
+                                <button
+                                  onClick={() => {
+                                    setInstrument({
+                                      id: row.put.instrumentToken || `${chainItem.id}-${strike}-PE`,
+                                      instrumentToken: row.put.instrumentToken || `${chainItem.instrumentToken}`,
+                                      tradingSymbol: row.put.tradingSymbol || `${chainItem.tradingSymbol}${strike}PE`,
+                                      exchange: chainItem.exchange || "NFO",
+                                      segment: "OPTIONS",
+                                      lotSize: chainItem.lotSize || 1,
+                                      lastPrice: putLtp,
+                                    });
+                                    setSide("BUY");
+                                    setChainItem(null);
+                                  }}
+                                  style={{
+                                    padding: "2px 6px", borderRadius: 4, border: "none",
+                                    background: "rgba(239, 68, 68, 0.2)", color: "#f43f5e",
+                                    fontWeight: 700, fontSize: 10, cursor: "pointer"
+                                  }}
+                                >
+                                  BUY PE
+                                </button>
+                              ) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -2496,5 +2538,70 @@ export default function Terminal() {
         );
       })()}
     </div>
+  );
+}
+
+// ── Error Boundary to prevent page breaking across prod, qc, uat, beta, dev ──
+import React from "react";
+
+class TerminalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("[Terminal Crash Prevented by ErrorBoundary]:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#080b12",
+          color: "#f8fafc",
+          padding: 24,
+          textAlign: "center"
+        }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#f87171", marginBottom: 8 }}>
+            Trading Terminal Temporary State Notice
+          </h2>
+          <p style={{ color: "#94a3b8", maxWidth: 520, fontSize: 13, lineHeight: 1.5, marginBottom: 20 }}>
+            The terminal encountered an unexpected response format while loading market data. The interface was protected from crashing.
+          </p>
+          <button
+            onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            style={{
+              background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+              color: "#fff",
+              border: "none",
+              padding: "10px 24px",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            Reload Terminal
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function ProtectedTerminal() {
+  return (
+    <TerminalErrorBoundary>
+      <Terminal />
+    </TerminalErrorBoundary>
   );
 }
