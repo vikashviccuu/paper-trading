@@ -4,8 +4,24 @@ import { getBrokerAdapter } from "../brokers/BrokerFactory";
 import { prisma } from "../utils/prisma";
 import { Prisma } from "@prisma/client";
 import { InstrumentSyncService } from "../services/InstrumentSyncService";
+import { isMarketOpen, getIndianTime } from "../utils/marketHours";
 
 export const marketRouter = Router();
+
+/** Returns current Indian stock market hours status (open/closed, IST time, schedule). Publicly accessible. */
+marketRouter.get("/status", (req, res) => {
+  const exchange = (req.query.exchange as string) || "NSE";
+  const status = isMarketOpen(exchange);
+  const ist = getIndianTime();
+  res.json({
+    ...status,
+    exchange,
+    dayOfWeek: ist.dayOfWeek,
+    currentIstTime: ist.timeString,
+    formattedIstTime: ist.istDate.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+  });
+});
+
 marketRouter.use(requireAuth);
 
 const TOP_PRIORITY_SYMBOLS = [

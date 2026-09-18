@@ -5,6 +5,7 @@ import { calculateRequiredMargin } from "./MarginCalculator";
 import { portfolioService } from "./PortfolioService";
 import { contestPortfolioService } from "./ContestPortfolioService";
 import { env } from "../config/env";
+import { isMarketOpen } from "../utils/marketHours";
 
 export interface PlaceOrderInput {
   userId: string;
@@ -45,6 +46,12 @@ export class OrderEngine {
   async placeOrder(input: PlaceOrderInput) {
     const instrument = await prisma.instrument.findUnique({ where: { id: input.instrumentId } });
     if (!instrument) throw new AppError(404, "Instrument not found");
+
+    // Enforce active Indian market trading hours (09:15 - 15:30 IST for NSE/BSE/NFO, 09:00 - 23:30 IST for MCX)
+    const marketCheck = isMarketOpen(instrument.exchange);
+    if (!marketCheck.isOpen) {
+      throw new AppError(400, marketCheck.reason || "Market is currently closed. Trading is allowed only during active market hours.");
+    }
 
     if ((input.orderType === "LIMIT" || input.orderType === "SL") && input.price == null) {
       throw new AppError(400, "price is required for LIMIT/SL orders");

@@ -12,23 +12,59 @@ const INDICES = [
   { label: "MIDCAP",    token: "288009" },
 ];
 
+const INITIAL_INDEX_DATA: Record<string, { ltp: number; chg: number; pct: number }> = {
+  "256265": { ltp: 23724.67, chg: 23.72, pct: 0.10 },
+  "260105": { ltp: 51200.00, chg: 120.00, pct: 0.23 },
+  "257801": { ltp: 23800.00, chg: 60.00, pct: 0.25 },
+  "264969": { ltp: 13.73, chg: 0.01, pct: 0.07 },
+  "288009": { ltp: 12650.00, chg: 35.00, pct: 0.28 },
+};
+
 // ── Ticker bar ───────────────────────────────────────────────
-function TickerBar() {
-  const [prices, setPrices] = useState<Record<string, { ltp: number; chg: number; pct: number }>>({});
+function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; currentIstTime?: string } | null }) {
+  const [prices, setPrices] = useState<Record<string, { ltp: number; chg: number; pct: number }>>(INITIAL_INDEX_DATA);
 
   useEffect(() => {
-    const s = getSocket();
+    // 1. Immediately query REST quote API so accurate prices display right away
     const tokens = INDICES.map((i) => i.token);
+    MarketAPI.quote(tokens)
+      .then((res) => {
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setPrices((prev) => {
+            const next = { ...prev };
+            for (const q of res.data) {
+              if (q && q.instrumentToken) {
+                const ltp = Number(q.lastPrice || 0);
+                const close = Number(q.close || ltp);
+                const chg = Number((ltp - close).toFixed(2));
+                const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
+                next[q.instrumentToken] = { ltp, chg, pct };
+              }
+            }
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+
+    // 2. Subscribe to WebSocket ticks for real-time live updates
+    const s = getSocket();
     s.emit("subscribe", tokens);
     const onTick = (t: Tick) =>
-      setPrices((p) => ({
-        ...p,
-        [t.instrumentToken]: {
-          ltp: t.lastPrice,
-          chg: t.lastPrice - (t.close ?? 0),
-          pct: t.close ? ((t.lastPrice - t.close) / t.close) * 100 : 0,
-        },
-      }));
+      setPrices((p) => {
+        const existing = p[t.instrumentToken];
+        const close = t.close ?? (existing ? existing.ltp - existing.chg : t.lastPrice);
+        const chg = Number((t.lastPrice - close).toFixed(2));
+        const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
+        return {
+          ...p,
+          [t.instrumentToken]: {
+            ltp: t.lastPrice,
+            chg,
+            pct,
+          },
+        };
+      });
     s.on("tick", onTick);
     return () => { s.off("tick", onTick); s.emit("unsubscribe", tokens); };
   }, []);
@@ -36,7 +72,7 @@ function TickerBar() {
   return (
     <div className="t-ticker">
       {INDICES.map((idx, i) => {
-        const p = prices[idx.token];
+        const p = prices[idx.token] || INITIAL_INDEX_DATA[idx.token];
         const up = p ? p.chg >= 0 : true;
         return (
           <div key={idx.token} style={{ display: "flex", alignItems: "center", gap: 28 }}>
@@ -49,6 +85,32 @@ function TickerBar() {
           </div>
         );
       })}
+
+      {/* Market Hours Indicator pill */}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, paddingRight: 8 }}>
+        <span style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          fontSize: 10,
+          fontWeight: 800,
+          letterSpacing: "0.05em",
+          padding: "2px 8px",
+          borderRadius: 99,
+          background: marketStatus?.isOpen ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
+          color: marketStatus?.isOpen ? "#4ade80" : "#f87171",
+          border: `1px solid ${marketStatus?.isOpen ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+        }}>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: marketStatus?.isOpen ? "#22c55e" : "#ef4444",
+            boxShadow: marketStatus?.isOpen ? "0 0 8px #22c55e" : "none"
+          }} />
+          {marketStatus?.isOpen ? "MARKET OPEN (09:15 - 15:30 IST)" : "MARKET CLOSED (09:15 - 15:30 IST)"}
+        </span>
+      </div>
     </div>
   );
 }
@@ -58,9 +120,8 @@ function KiteStatusBar() {
   return null;
 }
 
-// ── Synthetic bar generator for empty/failed history API responses ──────
-// ── Synthetic bar generator for empty/failed history API responses ──────
-function generateSyntheticBars(basePrice: number, interval: string): CandlestickData[] {
+// ── Deterministic synthetic bar generator (prevents chart data reshaping/fluctuating) ──
+function generateSyntheticBars(basePrice: number, interval: string, token: string = ""): CandlestickData[] {
   const bars: CandlestickData[] = [];
   const now = Math.floor(Date.now() / 1000);
 
@@ -74,14 +135,21 @@ function generateSyntheticBars(basePrice: number, interval: string): Candlestick
   let price = basePrice > 0 ? basePrice : 100;
   const startTime = Math.floor((now - count * stepSec) / stepSec) * stepSec;
 
+  // Deterministic seed based on token so candles don't reshuffle on re-renders
+  let seed = (token ? token.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) : 42) + count;
+  function pseudoRandom() {
+    const x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+  }
+
   for (let i = 0; i < count; i++) {
     const time = (startTime + i * stepSec) as any;
-    const changePct = (Math.random() - 0.495) * 0.008;
+    const changePct = (pseudoRandom() - 0.495) * 0.005;
     const open = price;
     price = +(open * (1 + changePct)).toFixed(2);
     const close = price;
-    const high = +(Math.max(open, close) * (1 + Math.random() * 0.003)).toFixed(2);
-    const low = +(Math.min(open, close) * (1 - Math.random() * 0.003)).toFixed(2);
+    const high = +(Math.max(open, close) * (1 + pseudoRandom() * 0.0025)).toFixed(2);
+    const low = +(Math.min(open, close) * (1 - pseudoRandom() * 0.0025)).toFixed(2);
     bars.push({ time, open, high, low, close });
   }
   return bars;
@@ -374,6 +442,18 @@ export default function Terminal() {
   // Broker Feed Mode (ZERODHA vs MOCK)
   const [brokerMode, setBrokerMode] = useState<"ZERODHA" | "MOCK">("ZERODHA");
   const [isBrokerConnected, setIsBrokerConnected] = useState<boolean>(true);
+  const [marketStatus, setMarketStatus] = useState<{ isOpen: boolean; reason?: string; currentIstTime?: string; marketOpenTime?: string; marketCloseTime?: string } | null>(null);
+
+  useEffect(() => {
+    const fetchStatus = () => {
+      api.get("/market/status").then((r) => {
+        if (r.data) setMarketStatus(r.data);
+      }).catch(() => {});
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function toggleBrokerMode() {
     const nextMode = brokerMode === "ZERODHA" ? "MOCK" : "ZERODHA";
@@ -535,12 +615,12 @@ export default function Terminal() {
           setBars(mapped);
           if (mapped.length) setPrevClose(mapped[mapped.length - 1].close);
         } else {
-          const synthetic = generateSyntheticBars(ltp || Number(instrument.lastPrice || 1000), tf);
+          const synthetic = generateSyntheticBars(ltp || Number(instrument.lastPrice || 1000), tf, instrument.instrumentToken);
           setBars(synthetic);
           if (synthetic.length) setPrevClose(synthetic[synthetic.length - 1].close);
         }
       }).catch(() => {
-        const synthetic = generateSyntheticBars(ltp || Number(instrument.lastPrice || 1000), tf);
+        const synthetic = generateSyntheticBars(ltp || Number(instrument.lastPrice || 1000), tf, instrument.instrumentToken);
         setBars(synthetic);
         if (synthetic.length) setPrevClose(synthetic[synthetic.length - 1].close);
       });
@@ -600,6 +680,16 @@ export default function Terminal() {
     e.preventDefault();
     if (!instrument) return;
     setMsg(null);
+
+    // Enforce Indian market hours before submitting order
+    if (marketStatus && !marketStatus.isOpen) {
+      setMsg({
+        text: `⛔ Market is Closed. Orders can only be placed Monday to Friday between 09:15 AM and 03:30 PM IST. (Current IST: ${marketStatus.currentIstTime || "Closed"})`,
+        ok: false,
+      });
+      return;
+    }
+
     try {
       await OrdersAPI.place({
         instrumentId: instrument.id, transactionType: side,
@@ -633,7 +723,7 @@ export default function Terminal() {
 
   return (
     <div className="t-root">
-      <TickerBar />
+      <TickerBar marketStatus={marketStatus} />
       <KiteStatusBar />
 
       {/* ── Navbar ── */}
@@ -1594,8 +1684,35 @@ export default function Terminal() {
                 <div className="t-margin-row"><span className="ml">Available</span><span className="mv">₹{(wallet ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span></div>
               </div>
 
-              <button type="submit" className={`t-place-btn ${side === "BUY" ? "buy" : "sell"}`} disabled={!instrument}>
-                Place {side} Order
+              {marketStatus && !marketStatus.isOpen && (
+                <div style={{
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  margin: "8px 0 10px",
+                  fontSize: 11,
+                  color: "#fca5a5",
+                  lineHeight: 1.4,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 800 }}>
+                    <span>⛔</span> Market Closed
+                  </div>
+                  <div style={{ fontSize: 10, opacity: 0.9, marginTop: 2 }}>
+                    Orders cannot be executed. Regular hours: Monday to Friday, 09:15 AM to 03:30 PM IST.
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className={`t-place-btn ${side === "BUY" ? "buy" : "sell"}`}
+                disabled={!instrument || (marketStatus !== null && !marketStatus.isOpen)}
+                style={marketStatus && !marketStatus.isOpen ? { opacity: 0.6, cursor: "not-allowed", filter: "grayscale(0.5)" } : {}}
+              >
+                {marketStatus && !marketStatus.isOpen
+                  ? `Market Closed (09:15 - 15:30 IST)`
+                  : `Place ${side} Order`}
               </button>
               {msg && <div className={`t-msg ${msg.ok ? "ok" : "err"}`}>{msg.text}</div>}
             </form>

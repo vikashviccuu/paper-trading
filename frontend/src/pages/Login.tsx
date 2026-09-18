@@ -20,6 +20,7 @@ export default function Login() {
   const [phoneOtp, setPhoneOtp] = useState("");
   const [demoOtps, setDemoOtps] = useState<{ emailOtp?: string; phoneOtp?: string; otp?: string } | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [emailDeliveryError, setEmailDeliveryError] = useState<string | null>(null);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -57,9 +58,14 @@ export default function Login() {
         setPendingUserId(res.data.userId || "");
         setMaskedPhone(res.data.phone || "");
         if (res.data.demoOtp) setDemoOtps(res.data.demoOtp);
+        if (res.data.emailDelivery && !res.data.emailDelivery.sent) {
+          setEmailDeliveryError(res.data.emailDelivery.error || "SMTP mail server offline");
+        } else {
+          setEmailDeliveryError(null);
+        }
         setStep("login_otp");
         setResendCooldown(30);
-        setInfoMsg(res.data.message || "Security OTP sent to your registered mobile (via MSG91 SMS).");
+        setInfoMsg(res.data.message || `Security OTP sent to your registered email (${email}).`);
         return;
       }
 
@@ -134,20 +140,25 @@ export default function Login() {
     }
   }
 
-  async function handleResendCode() {
+  async function handleResendCode(targetChannel: "email" | "phone" | "both" = "both") {
     if (!pendingUserId || resendCooldown > 0) return;
     setError(null);
     setLoading(true);
 
     try {
       if (step === "login_otp") {
-        const res = await AuthAPI.login(email.trim(), password);
+        const res = await AuthAPI.resendLoginOtp({ userId: pendingUserId, channel: targetChannel });
         if (res.data.demoOtp) setDemoOtps(res.data.demoOtp);
-        setInfoMsg("Security login code resent via MSG91 SMS.");
+        if (res.data.emailDelivery && !res.data.emailDelivery.sent) {
+          setEmailDeliveryError(res.data.emailDelivery.error || "SMTP mail server offline");
+        } else {
+          setEmailDeliveryError(null);
+        }
+        setInfoMsg(res.data.message || `Security login code resent to ${targetChannel === "both" ? "email and phone" : targetChannel}.`);
       } else {
-        const res = await AuthAPI.resendVerificationOtp({ userId: pendingUserId, channel: "both" });
+        const res = await AuthAPI.resendVerificationOtp({ userId: pendingUserId, channel: targetChannel });
         if (res.data.demoOtp) setDemoOtps(res.data.demoOtp);
-        setInfoMsg("Verification codes resent to your email and mobile.");
+        setInfoMsg(res.data.message || `Verification codes resent to ${targetChannel === "both" ? "email and phone" : targetChannel}.`);
       }
       setResendCooldown(30);
     } catch (err: any) {
@@ -182,7 +193,7 @@ export default function Login() {
           </h2>
           <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4, textAlign: "center" }}>
             {step === "credentials" && "Enter your credentials to access your trading terminal"}
-            {step === "login_otp" && `Enter the 6-digit security code sent to ${maskedPhone || email} via MSG91 SMS`}
+            {step === "login_otp" && `Enter the 6-digit security code sent to ${email}${maskedPhone ? ` and mobile (${maskedPhone})` : ""}`}
             {step === "unverified_dual" && "Validate your email and mobile phone with the verification OTPs"}
           </p>
         </div>
@@ -325,6 +336,29 @@ export default function Login() {
         {/* STEP 2: Modern Login 2FA OTP Form */}
         {step === "login_otp" && (
           <form onSubmit={onSubmitLoginOtp}>
+            {/* Email Server Warning Notice if SMTP not delivering */}
+            {emailDeliveryError && (
+              <div style={{
+                background: "rgba(245, 158, 11, 0.12)",
+                border: "1px solid rgba(245, 158, 11, 0.35)",
+                borderRadius: 10,
+                padding: "11px 14px",
+                marginBottom: 14,
+                color: "#fbbf24",
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}>
+                <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <span>⚠️</span> Mail Server Not Connected
+                </div>
+                <div>
+                  Email did not reach your Gmail inbox because local SMTP is offline (<em>{emailDeliveryError}</em>).
+                  <br />
+                  👉 Please click <strong>Auto-fill Code</strong> above or enter the SMS OTP sent to your phone.
+                </div>
+              </div>
+            )}
+
             <div style={{
               background: "#161b22",
               border: "1px solid #30363d",
@@ -334,9 +368,16 @@ export default function Login() {
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#e6edf3", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span>📱</span> Mobile &amp; Email Login Code
+                  <span>📧</span> Email &amp; Mobile Security Code
                 </span>
-                <span style={{ fontSize: 11, color: "#3fb950", fontWeight: 600 }}>● MSG91 Active</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {emailDeliveryError ? (
+                    <span style={{ fontSize: 11, color: "#f59e0b", fontWeight: 600 }}>● Email Offline</span>
+                  ) : (
+                    <span style={{ fontSize: 11, color: "#38bdf8", fontWeight: 600 }}>● Email Sent</span>
+                  )}
+                  {maskedPhone && <span style={{ fontSize: 11, color: "#3fb950", fontWeight: 600 }}>● SMS Active</span>}
+                </div>
               </div>
               <input
                 className="auth-input"
@@ -349,6 +390,9 @@ export default function Login() {
                 autoFocus
                 style={{ letterSpacing: 6, fontWeight: 800, fontSize: 18, textAlign: "center" }}
               />
+              <div style={{ marginTop: 8, textAlign: "center", fontSize: 12, color: "#9ca3af" }}>
+                Target account: <strong style={{ color: "#38bdf8" }}>{email}</strong>
+              </div>
             </div>
 
             <button className="auth-btn-primary" type="submit" disabled={loading} style={{ marginTop: 4 }}>
@@ -367,18 +411,36 @@ export default function Login() {
                 ← Change Account
               </button>
 
-              <button
-                type="button"
-                onClick={handleResendCode}
-                disabled={loading || resendCooldown > 0}
-                style={{
-                  background: "none", border: "none",
-                  color: resendCooldown > 0 ? "#484f58" : "#60a5fa",
-                  fontWeight: 600, cursor: resendCooldown > 0 ? "default" : "pointer"
-                }}
-              >
-                {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend OTP 🔄"}
-              </button>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => handleResendCode("email")}
+                  disabled={loading || resendCooldown > 0}
+                  style={{
+                    background: "none", border: "none",
+                    color: resendCooldown > 0 ? "#484f58" : "#38bdf8",
+                    fontWeight: 600, cursor: resendCooldown > 0 ? "default" : "pointer"
+                  }}
+                  title="Resend code to your email inbox"
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend Email 📧"}
+                </button>
+                {maskedPhone && (
+                  <button
+                    type="button"
+                    onClick={() => handleResendCode("phone")}
+                    disabled={loading || resendCooldown > 0}
+                    style={{
+                      background: "none", border: "none",
+                      color: resendCooldown > 0 ? "#484f58" : "#60a5fa",
+                      fontWeight: 600, cursor: resendCooldown > 0 ? "default" : "pointer"
+                    }}
+                    title="Resend code via mobile SMS"
+                  >
+                    Resend SMS 📱
+                  </button>
+                )}
+              </div>
             </div>
           </form>
         )}
@@ -432,7 +494,7 @@ export default function Login() {
               </button>
               <button
                 type="button"
-                onClick={handleResendCode}
+                onClick={() => handleResendCode("both")}
                 disabled={loading || resendCooldown > 0}
                 style={{
                   background: "none", border: "none",

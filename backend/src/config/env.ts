@@ -161,6 +161,15 @@ export const env = {
   MSG91_WIDGET_ID: req("MSG91_WIDGET_ID", "SecureOTPWidget2KQL"),
   MSG91_TEMPLATE_ID: req("MSG91_TEMPLATE_ID", "SecureOTPWidget2KQL"),
 
+  // ---- SMTP Mail Server Configuration ----
+  SMTP_HOST: req("SMTP_HOST", "localhost"),
+  SMTP_PORT: Number(req("SMTP_PORT", "587")),
+  SMTP_SECURE: req("SMTP_SECURE", "false") === "true",
+  SMTP_USER: req("SMTP_USER", ""),
+  SMTP_PASS: req("SMTP_PASS", ""),
+  SMTP_FROM: req("SMTP_FROM", "Paper Trading <noreply@papertrading.local>"),
+  SMTP_IGNORE_TLS: req("SMTP_IGNORE_TLS", "false") === "true",
+
   // ---- Test Mode Demo Codes ----
   ENABLE_DEMO_OTP: req("ENABLE_DEMO_OTP", "true") === "true",
 };

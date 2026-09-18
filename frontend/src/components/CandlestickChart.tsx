@@ -59,6 +59,9 @@ export default function CandlestickChart({ instrumentToken, bars }: Props) {
       if (!currentBar) {
         currentBar = { time, open: tick.lastPrice, high: tick.lastPrice, low: tick.lastPrice, close: tick.lastPrice };
       } else {
+        if (currentBar.close === tick.lastPrice && Number(currentBar.high) >= tick.lastPrice && Number(currentBar.low) <= tick.lastPrice) {
+          return;
+        }
         currentBar = {
           ...currentBar,
           close: tick.lastPrice,

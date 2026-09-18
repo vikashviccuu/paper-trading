@@ -4,15 +4,13 @@ import { getBrokerAdapter } from "../brokers/BrokerFactory";
 import { orderEngine } from "../engine/OrderEngine";
 import { env } from "../config/env";
 import { prisma } from "../utils/prisma";
-import { getAccurateBasePrice } from "../utils/marketDataReference";
+import { getAccurateBasePrice, getAccuratePrevClose } from "../utils/marketDataReference";
+import { isMarketOpen } from "../utils/marketHours";
 
 /**
- * Fan-out layer between the (single) broker tick stream and however many
- * browser clients are watching a symbol. Each unique instrumentToken is
- * subscribed to the broker exactly once; every tick is (a) broadcast to
- * subscribed sockets over Socket.io and (b) fed to OrderEngine so resting
- * LIMIT/SL orders can trigger, and (c) cached back onto the Instrument row
- * as lastPrice for REST fallbacks.
+ * Fan-out layer between the broker tick stream and browser clients.
+ * Caches latest ticks and provides instant emission upon subscription.
+ * When market is closed, prices remain rock-solid and do not fluctuate.
  */
 export function initPriceFeedGateway(httpServer: HttpServer) {
   const io = new SocketIOServer(httpServer, {
@@ -22,6 +20,30 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
   const subscriberCounts = new Map<string, number>();
   const fallbackIntervals = new Map<string, NodeJS.Timeout>();
   const lastTickTimes = new Map<string, number>();
+  const latestQuoteCache = new Map<string, any>();
+
+  function createQuote(token: string, price: number, inst?: any) {
+    const prevClose = getAccuratePrevClose(inst, token);
+    const netChange = Number((price - prevClose).toFixed(2));
+    const changePercent = prevClose > 0 ? Number(((netChange / prevClose) * 100).toFixed(2)) : 0;
+    const open = Number((prevClose * 1.0008).toFixed(2));
+    const high = Number((Math.max(price, open) * 1.002).toFixed(2));
+    const low = Number((Math.min(price, open) * 0.998).toFixed(2));
+
+    return {
+      instrumentToken: token,
+      tradingSymbol: inst?.tradingSymbol || token,
+      lastPrice: price,
+      open,
+      high,
+      low,
+      close: prevClose,
+      volume: 450000 + Math.floor(Math.random() * 50000),
+      netChange,
+      changePercent,
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   io.on("connection", (socket) => {
     const subscribedTokens = new Set<string>();
@@ -29,6 +51,18 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
     socket.on("subscribe", async (tokens: string[]) => {
       const broker = getBrokerAdapter();
       for (const token of tokens) {
+        // Send cached quote immediately if available
+        const cached = latestQuoteCache.get(token);
+        if (cached) {
+          socket.emit("tick", cached);
+        } else {
+          // Send instant baseline quote so UI never displays "—"
+          const basePrice = getAccurateBasePrice(undefined, token);
+          const instantQuote = createQuote(token, basePrice);
+          latestQuoteCache.set(token, instantQuote);
+          socket.emit("tick", instantQuote);
+        }
+
         if (subscribedTokens.has(token)) continue;
         subscribedTokens.add(token);
         socket.join(`tick:${token}`);
@@ -36,10 +70,11 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
         subscriberCounts.set(token, count + 1);
 
         if (count === 0) {
-          // first subscriber for this token -> open the broker stream
+          // First subscriber for this token -> open the broker stream
           try {
             await broker.subscribeTicks([token], (quote) => {
               lastTickTimes.set(quote.instrumentToken, Date.now());
+              latestQuoteCache.set(quote.instrumentToken, quote);
               io.to(`tick:${quote.instrumentToken}`).emit("tick", quote);
               orderEngine.evaluatePendingOrders(quote.instrumentToken, quote.lastPrice).catch(() => {});
               prisma.instrument
@@ -50,12 +85,11 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
             console.warn(`[PriceFeed] Broker subscribe failed for token ${token}:`, subErr.message);
           }
 
-          // Fallback heartbeat: If outside market hours or broker is silent,
-          // emit simulated ticks every 1.5s using accurate real-market base prices
+          // Fallback heartbeat: If live broker is silent (or off-market),
+          // maintain clean price stream.
           if (!fallbackIntervals.has(token)) {
             let lastPrice = 0;
             let currentInst: any = null;
-            // query db for initial lastPrice or calculate from accurate reference
             prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
               currentInst = inst;
               const dbPrice = Number(inst?.lastPrice || 0);
@@ -64,8 +98,12 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
               } else {
                 lastPrice = getAccurateBasePrice(inst, token);
               }
+              const initialQuote = createQuote(token, lastPrice, currentInst);
+              latestQuoteCache.set(token, initialQuote);
             }).catch(() => {
               lastPrice = getAccurateBasePrice(undefined, token);
+              const initialQuote = createQuote(token, lastPrice);
+              latestQuoteCache.set(token, initialQuote);
             });
 
             const timer = setInterval(() => {
@@ -75,23 +113,24 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
                 if (!lastPrice || lastPrice <= 0) {
                   lastPrice = getAccurateBasePrice(currentInst, token);
                 }
-                const jitter = (Math.random() - 0.495) * 0.0015;
-                lastPrice = Number((lastPrice * (1 + jitter)).toFixed(2));
 
-                const quote = {
-                  instrumentToken: token,
-                  lastPrice,
-                  open: Number((lastPrice * 0.998).toFixed(2)),
-                  high: Number((lastPrice * 1.002).toFixed(2)),
-                  low: Number((lastPrice * 0.997).toFixed(2)),
-                  close: Number((lastPrice * 0.999).toFixed(2)),
-                  volume: Math.floor(Math.random() * 1000 + 50),
-                  timestamp: new Date().toISOString(),
-                };
+                const marketStatus = isMarketOpen(currentInst?.exchange || "NSE");
+
+                // If market is OPEN: apply subtle micro-jitter within standard bounds.
+                // If market is CLOSED: DO NOT jitter! Keep price rock solid at steady level.
+                if (marketStatus.isOpen) {
+                  const jitter = (Math.random() - 0.495) * 0.0004;
+                  lastPrice = Number((lastPrice * (1 + jitter)).toFixed(2));
+                }
+
+                const quote = createQuote(token, lastPrice, currentInst);
+                latestQuoteCache.set(token, quote);
 
                 io.to(`tick:${token}`).emit("tick", quote);
-                orderEngine.evaluatePendingOrders(token, lastPrice).catch(() => {});
-                prisma.instrument.updateMany({ where: { instrumentToken: token }, data: { lastPrice } }).catch(() => {});
+                if (marketStatus.isOpen) {
+                  orderEngine.evaluatePendingOrders(token, lastPrice).catch(() => {});
+                  prisma.instrument.updateMany({ where: { instrumentToken: token }, data: { lastPrice } }).catch(() => {});
+                }
               }
             }, 1500);
             fallbackIntervals.set(token, timer);

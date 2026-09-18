@@ -9,15 +9,15 @@ import {
   TickListener,
 } from "../IBrokerAdapter";
 import { prisma } from "../../utils/prisma";
-import { getAccurateBasePrice } from "../../utils/marketDataReference";
+import { getAccurateBasePrice, getAccuratePrevClose, INDEX_CANONICAL_ALIASES } from "../../utils/marketDataReference";
 
 function generateFallbackQuote(token: string, inst?: any): QuoteDTO {
   const base = getAccurateBasePrice(inst, token);
+  const close = getAccuratePrevClose(inst, token);
   const spread = Math.max(Number((base * 0.0005).toFixed(2)), 0.05);
-  const open = Number((base * (1 + (Math.random() - 0.5) * 0.008)).toFixed(2));
-  const high = Number((Math.max(open, base) * (1 + Math.random() * 0.01)).toFixed(2));
-  const low = Number((Math.min(open, base) * (1 - Math.random() * 0.01)).toFixed(2));
-  const close = Number((base * (1 + (Math.random() - 0.5) * 0.004)).toFixed(2));
+  const open = Number((close * 1.0008).toFixed(2));
+  const high = Number((Math.max(base, open) * 1.002).toFixed(2));
+  const low = Number((Math.min(base, open) * 0.998).toFixed(2));
   const netChange = Number((base - close).toFixed(2));
   const changePercent = close > 0 ? Number(((netChange / close) * 100).toFixed(2)) : 0;
   const volume = 650000 + Math.floor(Math.random() * 850000);
@@ -36,9 +36,13 @@ function generateFallbackQuote(token: string, inst?: any): QuoteDTO {
     orders: Math.floor(1 + Math.random() * 8),
   }));
 
+  const rawSym = String(inst?.tradingSymbol || (token.includes(":") ? token.split(":")[1] : token)).trim().toUpperCase();
+  const alias = INDEX_CANONICAL_ALIASES[rawSym] || INDEX_CANONICAL_ALIASES[token];
+  const finalSymbol = alias?.displayLabel || inst?.tradingSymbol || (token.includes(":") ? token.split(":")[1] : token);
+
   return {
-    instrumentToken: String(inst?.instrumentToken || token),
-    tradingSymbol: inst?.tradingSymbol || (token.includes(":") ? token.split(":")[1] : token),
+    instrumentToken: String(inst?.instrumentToken || alias?.token || token),
+    tradingSymbol: finalSymbol,
     lastPrice: base,
     lastQuantity: Math.floor(1 + Math.random() * 50),
     lastTradeTime: new Date().toISOString(),
@@ -121,7 +125,14 @@ export class ZerodhaAdapter implements IBrokerAdapter {
     if (!instrumentTokens || instrumentTokens.length === 0) return [];
 
     const strippedTokens = instrumentTokens.map((t) => t.includes(":") ? t.split(":")[1] : t);
-    const searchTokens = Array.from(new Set([...instrumentTokens, ...strippedTokens]));
+    const aliasMatches: string[] = [];
+    for (const t of [...instrumentTokens, ...strippedTokens]) {
+      const a = INDEX_CANONICAL_ALIASES[t.toUpperCase()] || INDEX_CANONICAL_ALIASES[t];
+      if (a) {
+        aliasMatches.push(a.token, a.officialSymbol, a.displayLabel);
+      }
+    }
+    const searchTokens = Array.from(new Set([...instrumentTokens, ...strippedTokens, ...aliasMatches]));
 
     // Query database for instrument metadata (exchange, tradingSymbol, lastPrice)
     const dbInstruments = await prisma.instrument.findMany({
@@ -145,7 +156,19 @@ export class ZerodhaAdapter implements IBrokerAdapter {
     const kiteKeys: string[] = [];
 
     for (const token of instrumentTokens) {
-      const inst = tokenMap.get(token);
+      const stripped = token.includes(":") ? token.split(":")[1] : token;
+      const alias = INDEX_CANONICAL_ALIASES[token.toUpperCase()] || INDEX_CANONICAL_ALIASES[stripped.toUpperCase()] || INDEX_CANONICAL_ALIASES[token] || INDEX_CANONICAL_ALIASES[stripped];
+      
+      if (alias) {
+        const key = `NSE:${alias.officialSymbol}`;
+        kiteKeys.push(key);
+        kiteKeyToOriginalToken.set(key, token);
+        kiteKeyToOriginalToken.set(key, alias.token);
+        kiteKeyToOriginalToken.set(alias.officialSymbol, token);
+        continue;
+      }
+
+      const inst = tokenMap.get(token) || tokenMap.get(stripped);
       if (token.includes(":")) {
         kiteKeys.push(token);
         kiteKeyToOriginalToken.set(token, token);
@@ -308,30 +331,66 @@ export class ZerodhaAdapter implements IBrokerAdapter {
 
   async subscribeTicks(instrumentTokens: string[], onTick: TickListener): Promise<void> {
     this.tickListeners.add(onTick);
-    const numericTokens = instrumentTokens.map(Number);
+    const numericTokens = instrumentTokens.map(Number).filter((n) => !isNaN(n) && n > 0);
+    if (!numericTokens.length) return;
 
     if (!this.ticker) {
-      const accessToken = (this.kc as any).access_token;
-      this.ticker = new KiteTicker({ api_key: this.apiKey, access_token: accessToken });
-      this.ticker.on("ticks", (ticks: any[]) => {
-        for (const t of ticks) {
-          const quote: QuoteDTO = {
-            instrumentToken: String(t.instrument_token),
-            lastPrice: t.last_price,
-            open: t.ohlc?.open ?? 0,
-            high: t.ohlc?.high ?? 0,
-            low: t.ohlc?.low ?? 0,
-            close: t.ohlc?.close ?? 0,
-            volume: t.volume_traded ?? 0,
-            timestamp: new Date().toISOString(),
-          };
-          this.tickListeners.forEach((l) => l(quote));
+      const accessToken = (this.kc as any)?.access_token;
+      if (!this.apiKey || !accessToken) {
+        console.warn("[ZerodhaAdapter] KiteTicker skipped: api_key or access_token missing/expired.");
+        return;
+      }
+      try {
+        this.ticker = new KiteTicker({ api_key: this.apiKey, access_token: accessToken });
+        if (typeof this.ticker.autoReconnect === "function") {
+          this.ticker.autoReconnect(true, 10, 5);
         }
-      });
-      this.ticker.on("connect", () => this.ticker!.subscribe(numericTokens));
-      this.ticker.connect();
+
+        this.ticker.on("ticks", (ticks: any[]) => {
+          for (const t of ticks) {
+            const quote: QuoteDTO = {
+              instrumentToken: String(t.instrument_token),
+              lastPrice: t.last_price,
+              open: t.ohlc?.open ?? 0,
+              high: t.ohlc?.high ?? 0,
+              low: t.ohlc?.low ?? 0,
+              close: t.ohlc?.close ?? 0,
+              volume: t.volume_traded ?? 0,
+              timestamp: new Date().toISOString(),
+            };
+            this.tickListeners.forEach((l) => l(quote));
+          }
+        });
+
+        this.ticker.on("connect", () => {
+          console.log("[ZerodhaAdapter] KiteTicker connected. Subscribing to tokens:", numericTokens);
+          this.ticker!.subscribe(numericTokens);
+          if (this.ticker.modeFull) {
+            this.ticker.setMode(this.ticker.modeFull, numericTokens);
+          }
+        });
+
+        this.ticker.on("error", (err: any) => {
+          console.warn("[ZerodhaAdapter] KiteTicker error:", err?.message || err);
+        });
+
+        this.ticker.on("close", (reason: any) => {
+          console.warn("[ZerodhaAdapter] KiteTicker closed:", reason);
+        });
+
+        this.ticker.connect();
+      } catch (tickerErr: any) {
+        console.warn("[ZerodhaAdapter] KiteTicker init error:", tickerErr.message);
+      }
     } else {
-      this.ticker.subscribe(numericTokens);
+      try {
+        this.ticker.subscribe(numericTokens);
+        if (this.ticker.modeFull) {
+          this.ticker.setMode(this.ticker.modeFull, numericTokens);
+        }
+      } catch (subErr: any) {
+        console.warn("[ZerodhaAdapter] KiteTicker subscribe error:", subErr.message);
+      }
     }
   }
 

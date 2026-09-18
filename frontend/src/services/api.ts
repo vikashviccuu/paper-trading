@@ -70,6 +70,7 @@ export const AuthAPI = {
       email?: string;
       phone?: string;
       demoOtp?: { emailOtp?: string; phoneOtp?: string; otp?: string };
+      emailDelivery?: { sent: boolean; error?: string };
       message?: string;
     }>("/auth/login", { email, password, ...hints });
   },
@@ -81,6 +82,14 @@ export const AuthAPI = {
       user: any;
     }>("/auth/verify-login-otp", { ...payload, deviceId: hints.deviceId });
   },
+
+  resendLoginOtp: (payload: { userId: string; channel?: "email" | "phone" | "both" }) =>
+    api.post<{
+      sent: boolean;
+      message: string;
+      demoOtp?: { otp?: string };
+      emailDelivery?: { sent: boolean; error?: string };
+    }>("/auth/resend-login-otp", payload),
 
   sendPasswordResetOtp: (target: string | { email?: string; phone?: string; identifier?: string }) => {
     const payload = typeof target === "string" ? { identifier: target } : target;

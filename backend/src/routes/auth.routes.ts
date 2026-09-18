@@ -8,6 +8,7 @@ import { portfolioService } from "../engine/PortfolioService";
 import { LoginAuditService } from "../services/LoginAuditService";
 import { otpService } from "../services/OtpService";
 import { Msg91Service } from "../services/Msg91Service";
+import { MailService } from "../services/MailService";
 
 export const authRouter = Router();
 
@@ -265,9 +266,15 @@ authRouter.post("/login", async (req, res) => {
     });
   }
 
-  // Modern login system: Dispatches 2FA Login OTP to mobile (MSG91 SMS) and email
-  const destination = user.phone || user.email;
-  const loginOtpResult = await otpService.send(user.id, "LOGIN_2FA", destination);
+  // Modern login system: Dispatches 2FA Login OTP to email and mobile simultaneously
+  const destinations = [user.email, user.phone].filter((t): t is string => Boolean(t && t.trim().length > 0));
+  const loginOtpResult = await otpService.sendMultiTarget(user.id, "LOGIN_2FA", destinations);
+
+  const emailNote = loginOtpResult.emailSent
+    ? `Security OTP sent to your registered email (${user.email})`
+    : `Security OTP generated (Email server offline / not configured: ${loginOtpResult.emailError || "check SMTP in .env"})`;
+
+  const phoneNote = user.phone ? ` and mobile (${user.phone})` : "";
 
   res.json({
     requiresLoginOtp: true,
@@ -277,7 +284,11 @@ authRouter.post("/login", async (req, res) => {
     demoOtp: {
       otp: loginOtpResult.otp,
     },
-    message: `Security OTP sent to your registered mobile (${user.phone ? user.phone.slice(-4) : user.email}) via MSG91 SMS.`,
+    emailDelivery: {
+      sent: Boolean(loginOtpResult.emailSent),
+      error: loginOtpResult.emailError,
+    },
+    message: `${emailNote}${phoneNote}.`,
   });
 });
 
@@ -299,9 +310,9 @@ authRouter.post("/verify-login-otp", async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return res.status(404).json({ error: "User not found" });
 
-  const destination = user.phone || user.email;
+  const destinations = [user.email, user.phone].filter((t): t is string => Boolean(t && t.trim().length > 0));
   try {
-    await otpService.verify(user.id, "LOGIN_2FA", destination, otp);
+    await otpService.verifyAny(user.id, "LOGIN_2FA", destinations, otp);
   } catch (err: any) {
     await LoginAuditService.recordAttempt({
       req,
@@ -334,6 +345,48 @@ authRouter.post("/verify-login-otp", async (req, res) => {
       phone: user.phone,
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
+    },
+  });
+});
+
+/**
+ * POST /api/auth/resend-login-otp
+ * Resend 2FA Login OTP to email, phone, or both.
+ */
+const resendLoginOtpSchema = z.object({
+  userId: z.string().uuid("Invalid user ID"),
+  channel: z.enum(["email", "phone", "both"]).default("both"),
+});
+
+authRouter.post("/resend-login-otp", async (req, res) => {
+  const parsed = resendLoginOtpSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { userId, channel } = parsed.data;
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const destinations: string[] = [];
+  if ((channel === "email" || channel === "both") && user.email) {
+    destinations.push(user.email);
+  }
+  if ((channel === "phone" || channel === "both") && user.phone) {
+    destinations.push(user.phone);
+  }
+
+  const loginOtpResult = await otpService.sendMultiTarget(user.id, "LOGIN_2FA", destinations);
+
+  const emailNote = loginOtpResult.emailSent
+    ? `Security OTP resent successfully to ${user.email}`
+    : `Security OTP generated (Email server offline / not configured: ${loginOtpResult.emailError || "check SMTP in .env"})`;
+
+  res.json({
+    sent: true,
+    message: channel === "phone" ? "Security OTP resent to mobile SMS." : `${emailNote}.`,
+    demoOtp: { otp: loginOtpResult.otp },
+    emailDelivery: {
+      sent: Boolean(loginOtpResult.emailSent),
+      error: loginOtpResult.emailError,
     },
   });
 });
@@ -523,4 +576,98 @@ authRouter.get("/msg91/diagnostics", async (_req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+/**
+ * Direct Mail Server testing endpoint.
+ * POST /api/auth/mail/test-send
+ * Allows sending a test email with optional user-configured custom SMTP settings.
+ */
+const testMailSchema = z.object({
+  to: z.string().email("Please enter a valid recipient email"),
+  subject: z.string().optional(),
+  message: z.string().optional(),
+  // Optional user-provided SMTP overrides for testing custom servers
+  host: z.string().optional(),
+  port: z.number().optional(),
+  secure: z.boolean().optional(),
+  user: z.string().optional(),
+  pass: z.string().optional(),
+  from: z.string().optional(),
+  ignoreTLS: z.boolean().optional(),
+});
+
+authRouter.post("/mail/test-send", async (req, res) => {
+  const parsed = testMailSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { to, subject, message, host, port, secure, user, pass, from, ignoreTLS } = parsed.data;
+  const testOtp = String(Math.floor(100000 + Math.random() * 900000));
+
+  const customConfig = (host || port || user || pass || from || secure !== undefined) ? {
+    host,
+    port,
+    secure,
+    user,
+    pass,
+    from,
+    ignoreTLS,
+  } : undefined;
+
+  try {
+    const result = await MailService.sendMail({
+      to,
+      subject: subject || `[Paper Trading] Test Email & Verification Code: ${testOtp}`,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; background: #0b0f19; color: #fff; border-radius: 8px;">
+          <h2 style="color: #38bdf8;">Paper Trading Mail Server Test</h2>
+          <p>${message || "This is a test email dispatched from your Paper Trading Platform."}</p>
+          <div style="margin: 20px 0; padding: 15px; background: #1f2937; border-radius: 6px; font-size: 24px; letter-spacing: 4px; color: #10b981; font-weight: bold;">
+            ${testOtp}
+          </div>
+          <p style="color: #9ca3af; font-size: 12px;">Configuration source: ${customConfig ? "Custom User Configuration" : "Server Default Environment"}</p>
+        </div>
+      `,
+      text: `${message || "Test email from Paper Trading Platform."} Verification code: ${testOtp}`,
+      config: customConfig,
+    });
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: result.error || "Failed to send email",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Test email successfully dispatched to ${to}`,
+      messageId: result.messageId,
+      otp: testOtp,
+      configUsed: {
+        host: host || env.SMTP_HOST,
+        port: port || env.SMTP_PORT,
+        from: from || env.SMTP_FROM,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || "Failed to dispatch email",
+    });
+  }
+});
+
+/**
+ * Diagnostic status endpoint for Mail Server.
+ * GET /api/auth/mail/diagnostics
+ */
+authRouter.get("/mail/diagnostics", async (_req, res) => {
+  try {
+    const diagnostics = await MailService.getDiagnostics();
+    res.json({ success: true, diagnostics });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 

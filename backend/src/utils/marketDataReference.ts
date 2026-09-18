@@ -4,18 +4,47 @@
  * and price seeds to ensure real-market accuracy across all platforms.
  */
 
+export const INDEX_CANONICAL_ALIASES: Record<string, { token: string; officialSymbol: string; name: string; displayLabel: string }> = {
+  "NIFTY 50": { token: "256265", officialSymbol: "NIFTY 50", name: "NIFTY 50", displayLabel: "NIFTY 50" },
+  "NIFTY": { token: "256265", officialSymbol: "NIFTY 50", name: "NIFTY 50", displayLabel: "NIFTY 50" },
+  "256265": { token: "256265", officialSymbol: "NIFTY 50", name: "NIFTY 50", displayLabel: "NIFTY 50" },
+
+  "BANKNIFTY": { token: "260105", officialSymbol: "NIFTY BANK", name: "NIFTY BANK", displayLabel: "BANKNIFTY" },
+  "NIFTY BANK": { token: "260105", officialSymbol: "NIFTY BANK", name: "NIFTY BANK", displayLabel: "BANKNIFTY" },
+  "260105": { token: "260105", officialSymbol: "NIFTY BANK", name: "NIFTY BANK", displayLabel: "BANKNIFTY" },
+
+  "FINNIFTY": { token: "257801", officialSymbol: "NIFTY FIN SERVICE", name: "NIFTY FIN SERVICE", displayLabel: "FINNIFTY" },
+  "NIFTY FIN SERVICE": { token: "257801", officialSymbol: "NIFTY FIN SERVICE", name: "NIFTY FIN SERVICE", displayLabel: "FINNIFTY" },
+  "257801": { token: "257801", officialSymbol: "NIFTY FIN SERVICE", name: "NIFTY FIN SERVICE", displayLabel: "FINNIFTY" },
+
+  "MIDCAP": { token: "288009", officialSymbol: "NIFTY MID SELECT", name: "NIFTY MIDCAP SELECT", displayLabel: "MIDCAP" },
+  "MIDCPNIFTY": { token: "288009", officialSymbol: "NIFTY MID SELECT", name: "NIFTY MIDCAP SELECT", displayLabel: "MIDCAP" },
+  "NIFTY MID SELECT": { token: "288009", officialSymbol: "NIFTY MID SELECT", name: "NIFTY MIDCAP SELECT", displayLabel: "MIDCAP" },
+  "288009": { token: "288009", officialSymbol: "NIFTY MID SELECT", name: "NIFTY MIDCAP SELECT", displayLabel: "MIDCAP" },
+  "2067713": { token: "288009", officialSymbol: "NIFTY MID SELECT", name: "NIFTY MIDCAP SELECT", displayLabel: "MIDCAP" },
+
+  "INDIA VIX": { token: "264969", officialSymbol: "INDIA VIX", name: "INDIA VIX", displayLabel: "INDIA VIX" },
+  "264969": { token: "264969", officialSymbol: "INDIA VIX", name: "INDIA VIX", displayLabel: "INDIA VIX" },
+};
+
 export const ACCURATE_MARKET_PRICES: Record<string, number> = {
   // Benchmark Indices
-  "NIFTY 50": 23650.0,
-  "256265": 23650.0,
+  "NIFTY 50": 23724.67,
+  "NIFTY": 23724.67,
+  "256265": 23724.67,
   "BANKNIFTY": 51200.0,
+  "NIFTY BANK": 51200.0,
   "260105": 51200.0,
   "FINNIFTY": 23800.0,
+  "NIFTY FIN SERVICE": 23800.0,
   "257801": 23800.0,
   "MIDCAP": 12650.0,
+  "NIFTY MID SELECT": 12650.0,
+  "MIDCPNIFTY": 12650.0,
   "288009": 12650.0,
-  "INDIA VIX": 13.8,
-  "264969": 13.8,
+  "2067713": 12650.0,
+  "INDIA VIX": 13.73,
+  "264969": 13.73,
 
   // Heavyweights & Banking
   "RELIANCE": 1256.0,
@@ -237,4 +266,57 @@ export function getAccurateBasePrice(inst?: any, tokenOrSymbol?: string): number
 
   // 6. Generic equities: lotSize=1 standard equity
   return 550.0;
+}
+
+export const ACCURATE_MARKET_PREV_CLOSE: Record<string, number> = {
+  // Benchmark Indices previous day close
+  "NIFTY 50": 23700.95,
+  "NIFTY": 23700.95,
+  "256265": 23700.95,
+  "BANKNIFTY": 51080.0,
+  "NIFTY BANK": 51080.0,
+  "260105": 51080.0,
+  "FINNIFTY": 23740.0,
+  "NIFTY FIN SERVICE": 23740.0,
+  "257801": 23740.0,
+  "MIDCAP": 12615.0,
+  "NIFTY MID SELECT": 12615.0,
+  "MIDCPNIFTY": 12615.0,
+  "288009": 12615.0,
+  "2067713": 12615.0,
+  "INDIA VIX": 13.72,
+  "264969": 13.72,
+
+  // Stocks
+  "RELIANCE": 1251.0,
+  "738561": 1251.0,
+  "TCS": 3202.0,
+  "2953217": 3202.0,
+  "HDFCBANK": 1678.0,
+  "341249": 1678.0,
+  "INFY": 1818.0,
+  "408065": 1818.0,
+  "ICICIBANK": 1224.0,
+  "494849": 1224.0,
+  "SBIN": 781.0,
+  "779521": 781.0,
+};
+
+export function getAccuratePrevClose(inst?: any, tokenOrSymbol?: string): number {
+  const rawSym = String(inst?.tradingSymbol || tokenOrSymbol || "").trim().toUpperCase();
+  const rawToken = String(inst?.instrumentToken || tokenOrSymbol || "").trim();
+  const cleanSym = rawSym.includes(":") ? rawSym.split(":").pop()! : rawSym;
+  const cleanToken = rawToken.includes(":") ? rawToken.split(":").pop()! : rawToken;
+
+  if (ACCURATE_MARKET_PREV_CLOSE[rawToken]) return ACCURATE_MARKET_PREV_CLOSE[rawToken];
+  if (ACCURATE_MARKET_PREV_CLOSE[cleanToken]) return ACCURATE_MARKET_PREV_CLOSE[cleanToken];
+  if (ACCURATE_MARKET_PREV_CLOSE[cleanSym]) return ACCURATE_MARKET_PREV_CLOSE[cleanSym];
+  if (ACCURATE_MARKET_PREV_CLOSE[rawSym]) return ACCURATE_MARKET_PREV_CLOSE[rawSym];
+
+  // Alias lookup
+  const alias = INDEX_CANONICAL_ALIASES[rawSym] || INDEX_CANONICAL_ALIASES[cleanSym] || INDEX_CANONICAL_ALIASES[rawToken] || INDEX_CANONICAL_ALIASES[cleanToken];
+  if (alias && ACCURATE_MARKET_PREV_CLOSE[alias.token]) return ACCURATE_MARKET_PREV_CLOSE[alias.token];
+
+  const base = getAccurateBasePrice(inst, tokenOrSymbol);
+  return Number((base * 0.9985).toFixed(2));
 }
