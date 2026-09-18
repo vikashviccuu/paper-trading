@@ -39,6 +39,8 @@ brokerRouter.post("/zerodha/exchange", async (req, res) => {
     // Patch running process
     process.env.KITE_ACCESS_TOKEN = accessToken;
     (env as any).KITE_ACCESS_TOKEN = accessToken;
+    process.env.BROKER_PROVIDER = "ZERODHA";
+    (env as any).BROKER_PROVIDER = "ZERODHA";
 
     // Persist to .env file safely
     try {
@@ -48,6 +50,11 @@ brokerRouter.post("/zerodha/exchange", async (req, res) => {
         envContent = envContent.replace(/^KITE_ACCESS_TOKEN=.*/m, `KITE_ACCESS_TOKEN=${accessToken}`);
       } else {
         envContent += (envContent.endsWith("\n") || envContent === "" ? "" : "\n") + `KITE_ACCESS_TOKEN=${accessToken}\n`;
+      }
+      if (/^BROKER_PROVIDER=.*/m.test(envContent)) {
+        envContent = envContent.replace(/^BROKER_PROVIDER=.*/m, `BROKER_PROVIDER=ZERODHA`);
+      } else {
+        envContent += `BROKER_PROVIDER=ZERODHA\n`;
       }
       fs.writeFileSync(envPath, envContent, "utf8");
     } catch (fsErr: any) {

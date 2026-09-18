@@ -57,20 +57,36 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
         if (cached) {
           socket.emit("tick", cached);
         } else {
-          // Look up instrument from database for accurate symbol and price
-          prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
-            const dbPrice = Number(inst?.lastPrice || 0);
-            const basePrice = dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500
-              ? dbPrice
-              : getAccurateBasePrice(inst, token);
-            const instantQuote = createQuote(token, basePrice, inst);
-            latestQuoteCache.set(token, instantQuote);
-            socket.emit("tick", instantQuote);
+          // Attempt to query real quote from broker first (e.g. Zerodha)
+          broker.getQuote([token]).then((quotes) => {
+            if (quotes && quotes.length > 0 && quotes[0].lastPrice > 0) {
+              const q = quotes[0];
+              const fullQuote = {
+                ...q,
+                close: q.close ?? q.closePrice ?? q.lastPrice,
+                closePrice: q.closePrice ?? q.close ?? q.lastPrice,
+              };
+              latestQuoteCache.set(token, fullQuote);
+              socket.emit("tick", fullQuote);
+              return;
+            }
+            throw new Error("No broker quote");
           }).catch(() => {
-            const basePrice = getAccurateBasePrice(undefined, token);
-            const instantQuote = createQuote(token, basePrice);
-            latestQuoteCache.set(token, instantQuote);
-            socket.emit("tick", instantQuote);
+            // Look up instrument from database for accurate symbol and price
+            prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
+              const dbPrice = Number(inst?.lastPrice || 0);
+              const basePrice = dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500
+                ? dbPrice
+                : getAccurateBasePrice(inst, token);
+              const instantQuote = createQuote(token, basePrice, inst);
+              latestQuoteCache.set(token, instantQuote);
+              socket.emit("tick", instantQuote);
+            }).catch(() => {
+              const basePrice = getAccurateBasePrice(undefined, token);
+              const instantQuote = createQuote(token, basePrice);
+              latestQuoteCache.set(token, instantQuote);
+              socket.emit("tick", instantQuote);
+            });
           });
         }
 
@@ -101,9 +117,9 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
             console.warn(`[PriceFeed] Broker subscribe failed for token ${token}:`, subErr.message);
           }
 
-          // Fallback heartbeat: If live broker is silent (or off-market),
-          // maintain clean price stream.
-          if (!fallbackIntervals.has(token)) {
+          // Fallback heartbeat: Only for simulated/mock feeds.
+          // Real brokers (ZERODHA) rely on real ticks and Kite quotes.
+          if (!fallbackIntervals.has(token) && broker.providerName !== "ZERODHA") {
             let lastPrice = 0;
             let currentInst: any = null;
             prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
@@ -123,6 +139,7 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
             });
 
             const timer = setInterval(() => {
+              if (broker.providerName === "ZERODHA") return;
               const lastSeen = lastTickTimes.get(token) ?? 0;
               // If no live tick was received from broker in the last 3.5 seconds
               if (Date.now() - lastSeen > 3500) {

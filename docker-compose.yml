@@ -37,6 +37,8 @@ services:
       - KITE_API_SECRET=a5j4kdo7zr2u57zfpjan8plmctdjun4t
       - ADMIN_SEED_EMAIL=admin@example.com
       - ADMIN_SEED_PASSWORD=admin123456
+      - BROKER_PROVIDER=ZERODHA
+      - KITE_ACCESS_TOKEN=7CkAjX70hBRT2aWZdcr1BbFRdx4wctzQ
       - ENABLE_DEMO_OTP=true
     ports:
       - "4000:4000"

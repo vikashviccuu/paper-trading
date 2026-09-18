@@ -9,6 +9,7 @@ import {
   TickListener,
 } from "../IBrokerAdapter";
 import { prisma } from "../../utils/prisma";
+import { env } from "../../config/env";
 import { getAccurateBasePrice, getAccuratePrevClose, INDEX_CANONICAL_ALIASES } from "../../utils/marketDataReference";
 
 function generateFallbackQuote(token: string, inst?: any): QuoteDTO {
@@ -91,10 +92,12 @@ export class ZerodhaAdapter implements IBrokerAdapter {
   private ticker: any = null;
   private tickListeners: Set<TickListener> = new Set();
   private tokenToSymbol: Map<number, string> = new Map();
+  private subscribedTokens: Set<number> = new Set();
 
   constructor(private apiKey: string, private apiSecret: string, accessToken?: string) {
     this.kc = new KiteConnect({ api_key: apiKey });
-    if (accessToken) this.kc.setAccessToken(accessToken);
+    const token = accessToken || process.env.KITE_ACCESS_TOKEN || (env as any).KITE_ACCESS_TOKEN;
+    if (token) this.kc.setAccessToken(token);
   }
 
   async authenticate(params: { requestToken: string }): Promise<{ accessToken: string }> {
@@ -336,8 +339,12 @@ export class ZerodhaAdapter implements IBrokerAdapter {
     const numericTokens = instrumentTokens.map(Number).filter((n) => !isNaN(n) && n > 0);
     if (!numericTokens.length) return;
 
+    for (const t of numericTokens) {
+      this.subscribedTokens.add(t);
+    }
+
     if (!this.ticker) {
-      const accessToken = (this.kc as any)?.access_token;
+      const accessToken = (this.kc as any)?.access_token || process.env.KITE_ACCESS_TOKEN || (env as any).KITE_ACCESS_TOKEN;
       if (!this.apiKey || !accessToken) {
         console.warn("[ZerodhaAdapter] KiteTicker skipped: api_key or access_token missing/expired.");
         return;
@@ -350,13 +357,15 @@ export class ZerodhaAdapter implements IBrokerAdapter {
 
         this.ticker.on("ticks", (ticks: any[]) => {
           for (const t of ticks) {
+            const close = Number(t.ohlc?.close || t.last_price || 0);
             const quote: QuoteDTO = {
               instrumentToken: String(t.instrument_token),
               lastPrice: t.last_price,
-              open: t.ohlc?.open ?? 0,
-              high: t.ohlc?.high ?? 0,
-              low: t.ohlc?.low ?? 0,
-              close: t.ohlc?.close ?? 0,
+              open: Number(t.ohlc?.open ?? t.last_price),
+              high: Number(t.ohlc?.high ?? t.last_price),
+              low: Number(t.ohlc?.low ?? t.last_price),
+              close,
+              closePrice: close,
               volume: t.volume_traded ?? 0,
               timestamp: new Date().toISOString(),
             };
@@ -365,10 +374,11 @@ export class ZerodhaAdapter implements IBrokerAdapter {
         });
 
         this.ticker.on("connect", () => {
-          console.log("[ZerodhaAdapter] KiteTicker connected. Subscribing to tokens:", numericTokens);
-          this.ticker!.subscribe(numericTokens);
+          const allTokens = Array.from(this.subscribedTokens);
+          console.log("[ZerodhaAdapter] KiteTicker connected. Subscribing to tokens:", allTokens);
+          this.ticker!.subscribe(allTokens);
           if (this.ticker.modeFull) {
-            this.ticker.setMode(this.ticker.modeFull, numericTokens);
+            this.ticker.setMode(this.ticker.modeFull, allTokens);
           }
         });
 
@@ -397,7 +407,11 @@ export class ZerodhaAdapter implements IBrokerAdapter {
   }
 
   async unsubscribeTicks(instrumentTokens: string[]): Promise<void> {
-    this.ticker?.unsubscribe(instrumentTokens.map(Number));
+    const numericTokens = instrumentTokens.map(Number);
+    for (const t of numericTokens) {
+      this.subscribedTokens.delete(t);
+    }
+    this.ticker?.unsubscribe(numericTokens);
   }
 }
 

@@ -21,9 +21,14 @@ export function resetBrokerAdapter(): void {
 export function getBrokerAdapter(): IBrokerAdapter {
   if (cachedAdapter) return cachedAdapter;
 
-  switch (env.BROKER_PROVIDER) {
+  const kiteToken = process.env.KITE_ACCESS_TOKEN || (env as any).KITE_ACCESS_TOKEN;
+  const activeProvider = (env.BROKER_PROVIDER === "MOCK" && !kiteToken)
+    ? "MOCK"
+    : (kiteToken || env.BROKER_PROVIDER === "ZERODHA" ? "ZERODHA" : (env.BROKER_PROVIDER || "ZERODHA"));
+
+  switch (activeProvider) {
     case "ZERODHA":
-      cachedAdapter = new ZerodhaAdapter(env.KITE_API_KEY, env.KITE_API_SECRET, env.KITE_ACCESS_TOKEN);
+      cachedAdapter = new ZerodhaAdapter(env.KITE_API_KEY, env.KITE_API_SECRET, kiteToken);
       break;
     case "UPSTOX":
       cachedAdapter = new UpstoxAdapter(

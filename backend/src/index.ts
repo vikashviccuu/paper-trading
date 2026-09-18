@@ -63,14 +63,21 @@ app.get("/api/broker/zerodha/callback", async (req, res) => {
     // Patch running env
     process.env.KITE_ACCESS_TOKEN = accessToken;
     (env as any).KITE_ACCESS_TOKEN = accessToken;
+    process.env.BROKER_PROVIDER = "ZERODHA";
+    (env as any).BROKER_PROVIDER = "ZERODHA";
 
     // Write to .env file (cwd = backend/)
     const envPath = path.resolve(process.cwd(), ".env");
-    let envContent = fs.readFileSync(envPath, "utf8");
+    let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
     if (/^KITE_ACCESS_TOKEN=.*/m.test(envContent)) {
       envContent = envContent.replace(/^KITE_ACCESS_TOKEN=.*/m, `KITE_ACCESS_TOKEN=${accessToken}`);
     } else {
       envContent += `\nKITE_ACCESS_TOKEN=${accessToken}`;
+    }
+    if (/^BROKER_PROVIDER=.*/m.test(envContent)) {
+      envContent = envContent.replace(/^BROKER_PROVIDER=.*/m, `BROKER_PROVIDER=ZERODHA`);
+    } else {
+      envContent += `\nBROKER_PROVIDER=ZERODHA\n`;
     }
     fs.writeFileSync(envPath, envContent);
 
