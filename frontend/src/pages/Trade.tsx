@@ -294,7 +294,7 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
 }
 
 // ── Market Depth Card (Level 2 Quotes per Kite Connect specification) ──
-function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null; instrument: Instrument | null }) {
+function MarketDepthCard({ quote, instrument, isLight }: { quote: FullMarketQuote | null; instrument: Instrument | null; isLight?: boolean }) {
   if (!quote || !instrument) return null;
 
   const buyLevels = quote.depth?.buy || [];
@@ -304,24 +304,24 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
 
   return (
     <div style={{
-      background: "rgba(15, 23, 42, 0.75)",
-      border: "1px solid rgba(255, 255, 255, 0.08)",
+      background: isLight ? "#ffffff" : "rgba(15, 23, 42, 0.75)",
+      border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.08)",
       borderRadius: 10,
       padding: "12px 14px",
       marginBottom: 16,
-      boxShadow: "0 4px 20px rgba(0, 0, 0, 0.35)",
+      boxShadow: isLight ? "0 2px 8px rgba(0, 0, 0, 0.05)" : "0 4px 20px rgba(0, 0, 0, 0.35)",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid rgba(255, 255, 255, 0.07)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, paddingBottom: 6, borderBottom: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.07)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: isLight ? "#475569" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Market Depth (5 Levels)
           </span>
-          <span style={{ fontSize: 9, background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>
+          <span style={{ fontSize: 9, background: isLight ? "#eef2ff" : "rgba(99, 102, 241, 0.2)", color: isLight ? "#4338ca" : "#818cf8", border: isLight ? "1px solid #c7d2fe" : "none", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>
             LIVE
           </span>
         </div>
-        <div style={{ fontSize: 11, color: "#64748b" }}>
-          Vol: <span style={{ color: "#f8fafc", fontWeight: 700 }}>{(quote.volume || 0).toLocaleString("en-IN")}</span>
+        <div style={{ fontSize: 11, color: isLight ? "#64748b" : "#94a3b8" }}>
+          Vol: <span style={{ color: isLight ? "#0f172a" : "#f8fafc", fontWeight: 700 }}>{(quote.volume || 0).toLocaleString("en-IN")}</span>
         </div>
       </div>
 
@@ -329,19 +329,19 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {/* BUY BIDS */}
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#38bdf8", marginBottom: 4, paddingBottom: 2, borderBottom: "1px dashed rgba(56, 189, 248, 0.25)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: isLight ? "#0284c7" : "#38bdf8", marginBottom: 4, paddingBottom: 2, borderBottom: isLight ? "1px dashed rgba(2, 132, 199, 0.3)" : "1px dashed rgba(56, 189, 248, 0.25)" }}>
             <span>Orders</span>
             <span>Qty</span>
             <span>Bid</span>
           </div>
           {buyLevels.slice(0, 5).map((b, idx) => (
-            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: "#e2e8f0" }}>
-              <span style={{ color: "#64748b", fontSize: 10 }}>{b.orders !== undefined ? b.orders : "—"}</span>
+            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: isLight ? "#334155" : "#e2e8f0" }}>
+              <span style={{ color: isLight ? "#94a3b8" : "#64748b", fontSize: 10 }}>{b.orders !== undefined ? b.orders : "—"}</span>
               <span>{(b.quantity || 0).toLocaleString("en-IN")}</span>
-              <span style={{ color: "#38bdf8", fontWeight: 700 }}>{b.price ? `₹${Number(b.price).toFixed(2)}` : "—"}</span>
+              <span style={{ color: isLight ? "#0284c7" : "#38bdf8", fontWeight: 700 }}>{b.price ? `₹${Number(b.price).toFixed(2)}` : "—"}</span>
             </div>
           ))}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#38bdf8", marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: isLight ? "#0284c7" : "#38bdf8", marginTop: 4, paddingTop: 4, borderTop: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.08)" }}>
             <span>Total</span>
             <span>{totalBuyQty.toLocaleString("en-IN")}</span>
             <span />
@@ -350,19 +350,19 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
 
         {/* SELL ASKS */}
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#f87171", marginBottom: 4, paddingBottom: 2, borderBottom: "1px dashed rgba(248, 113, 113, 0.25)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: isLight ? "#dc2626" : "#f87171", marginBottom: 4, paddingBottom: 2, borderBottom: isLight ? "1px dashed rgba(220, 38, 38, 0.3)" : "1px dashed rgba(248, 113, 113, 0.25)" }}>
             <span>Offer</span>
             <span>Qty</span>
             <span>Orders</span>
           </div>
           {sellLevels.slice(0, 5).map((s, idx) => (
-            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: "#e2e8f0" }}>
-              <span style={{ color: "#f87171", fontWeight: 700 }}>{s.price ? `₹${Number(s.price).toFixed(2)}` : "—"}</span>
+            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: isLight ? "#334155" : "#e2e8f0" }}>
+              <span style={{ color: isLight ? "#dc2626" : "#f87171", fontWeight: 700 }}>{s.price ? `₹${Number(s.price).toFixed(2)}` : "—"}</span>
               <span>{(s.quantity || 0).toLocaleString("en-IN")}</span>
-              <span style={{ color: "#64748b", fontSize: 10 }}>{s.orders !== undefined ? s.orders : "—"}</span>
+              <span style={{ color: isLight ? "#94a3b8" : "#64748b", fontSize: 10 }}>{s.orders !== undefined ? s.orders : "—"}</span>
             </div>
           ))}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#f87171", marginTop: 4, paddingTop: 4, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: isLight ? "#dc2626" : "#f87171", marginTop: 4, paddingTop: 4, borderTop: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.08)" }}>
             <span />
             <span>{totalSellQty.toLocaleString("en-IN")}</span>
             <span>Total</span>
@@ -371,28 +371,28 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
       </div>
 
       {/* Stats summary: VWAP, Circuit Limits, OI */}
-      <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.07)", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, textAlign: "center" }}>
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.07)", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, textAlign: "center" }}>
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>VWAP / Avg</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#f8fafc", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: isLight ? "#0f172a" : "#f8fafc", fontFamily: "var(--font-mono)" }}>
             {quote.averagePrice || quote.lastPrice ? `₹${Number(quote.averagePrice || quote.lastPrice).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Lower Limit</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: isLight ? "#475569" : "#94a3b8", fontFamily: "var(--font-mono)" }}>
             {quote.lowerCircuitLimit ? `₹${Number(quote.lowerCircuitLimit).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Upper Limit</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: isLight ? "#475569" : "#94a3b8", fontFamily: "var(--font-mono)" }}>
             {quote.upperCircuitLimit ? `₹${Number(quote.upperCircuitLimit).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
           <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Open Interest</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: isLight ? "#0f172a" : "#cbd5e1", fontFamily: "var(--font-mono)" }}>
             {quote.oi !== undefined && quote.oi !== null ? Number(quote.oi).toLocaleString("en-IN") : "—"}
           </div>
         </div>
@@ -1206,10 +1206,15 @@ function Terminal() {
                   {/* Watchlist Header & Sync Button */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: isLight ? "#475569" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                         Market Watch
                       </span>
-                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, background: "rgba(37,99,235,0.2)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" }}>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10,
+                        background: isLight ? "#eff6ff" : "rgba(37,99,235,0.2)",
+                        color: isLight ? "#1d4ed8" : "#60a5fa",
+                        border: isLight ? "1px solid #bfdbfe" : "1px solid rgba(96,165,250,0.3)"
+                      }}>
                         {dbTotalCount !== null ? `${dbTotalCount.toLocaleString()} SYMBOLS` : "— SYMBOLS"}
                       </span>
                     </div>
@@ -1218,10 +1223,13 @@ function Terminal() {
                       disabled={isSyncingInstruments}
                       title="Fetch & Sync all latest market instruments from Zerodha Kite (NSE, NFO, MCX)"
                       style={{
-                        background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: isSyncingInstruments ? "#fbbf24" : "#94a3b8",
+                        background: isLight ? "#ffffff" : "rgba(255,255,255,0.04)",
+                        border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255,255,255,0.08)",
+                        color: isSyncingInstruments ? (isLight ? "#d97706" : "#fbbf24") : (isLight ? "#475569" : "#94a3b8"),
                         fontSize: 10, fontWeight: 700, cursor: isSyncingInstruments ? "wait" : "pointer",
                         display: "flex", alignItems: "center", gap: 4, padding: "2px 6px", borderRadius: 5,
-                        transition: "all 0.15s ease"
+                        transition: "all 0.15s ease",
+                        boxShadow: isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none"
                       }}
                     >
                       <span>🔄</span>
@@ -1237,10 +1245,17 @@ function Terminal() {
                         onClick={() => { setSegmentFilter(seg); setPage(1); }}
                         style={{
                           flex: 1, padding: "4px 0", borderRadius: 5, border: "1px solid",
-                          borderColor: segmentFilter === seg ? "rgba(96,165,250,0.4)" : "rgba(255,255,255,0.06)",
-                          background: segmentFilter === seg ? "rgba(37,99,235,0.2)" : "rgba(255,255,255,0.02)",
-                          color: segmentFilter === seg ? "#60a5fa" : "var(--text-muted)",
-                          fontSize: 10, fontWeight: 700, cursor: "pointer", transition: "all 0.12s"
+                          borderColor: segmentFilter === seg
+                            ? (isLight ? "#93c5fd" : "rgba(96,165,250,0.4)")
+                            : (isLight ? "#e2e8f0" : "rgba(255,255,255,0.06)"),
+                          background: segmentFilter === seg
+                            ? (isLight ? "#eff6ff" : "rgba(37,99,235,0.2)")
+                            : (isLight ? "#f8fafc" : "rgba(255,255,255,0.02)"),
+                          color: segmentFilter === seg
+                            ? (isLight ? "#1d4ed8" : "#60a5fa")
+                            : (isLight ? "#64748b" : "var(--text-muted)"),
+                          fontSize: 10, fontWeight: 700, cursor: "pointer", transition: "all 0.12s",
+                          boxShadow: segmentFilter === seg && isLight ? "0 1px 2px rgba(37,99,235,0.1)" : "none"
                         }}
                       >
                         {seg}
@@ -1288,7 +1303,7 @@ function Terminal() {
                       <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
                         <div style={{ flex: 1, overflowY: "auto", paddingRight: 2 }}>
                           {paginatedResults.length === 0 ? (
-                            <div style={{ padding: "30px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+                            <div style={{ padding: "30px 10px", fontSize: 12, color: isLight ? "#64748b" : "var(--text-muted)", textAlign: "center" }}>
                               No symbols matching filter
                             </div>
                           ) : (
@@ -1305,17 +1320,49 @@ function Terminal() {
                               const isNFO = r.exchange === "NFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
                               const isMCX = r.exchange === "MCX";
 
-                              const segBg = isNFO ? "rgba(168,85,247,0.15)" : isMCX ? "rgba(245,158,11,0.15)" : "rgba(59,130,246,0.15)";
-                              const segColor = isNFO ? "#c084fc" : isMCX ? "#fbbf24" : "#60a5fa";
+                              const segBg = isNFO
+                                ? (isLight ? "#f3e8ff" : "rgba(168,85,247,0.15)")
+                                : isMCX
+                                ? (isLight ? "#fef3c7" : "rgba(245,158,11,0.15)")
+                                : (isLight ? "#eff6ff" : "rgba(59,130,246,0.15)");
+
+                              const segColor = isNFO
+                                ? (isLight ? "#7e22ce" : "#c084fc")
+                                : isMCX
+                                ? (isLight ? "#b45309" : "#fbbf24")
+                                : (isLight ? "#1d4ed8" : "#60a5fa");
+
+                              const segBorder = isNFO
+                                ? (isLight ? "1px solid #e9d5ff" : "1px solid rgba(168,85,247,0.3)")
+                                : isMCX
+                                ? (isLight ? "1px solid #fde68a" : "1px solid rgba(245,158,11,0.3)")
+                                : (isLight ? "1px solid #bfdbfe" : "1px solid rgba(59,130,246,0.3)");
+
+                              const cardBg = sel
+                                ? (isLight ? "#eff6ff" : "rgba(37, 99, 235, 0.14)")
+                                : (isLight ? "#ffffff" : "rgba(255, 255, 255, 0.02)");
+
+                              const cardBorder = sel
+                                ? (isLight ? "1px solid #93c5fd" : "1px solid rgba(96, 165, 250, 0.4)")
+                                : (isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.05)");
+
+                              const cardBorderLeft = sel
+                                ? (isLight ? "3px solid #2563eb" : "3px solid #3b82f6")
+                                : "3px solid transparent";
+
+                              const cardShadow = isLight
+                                ? (sel ? "0 2px 6px rgba(37, 99, 235, 0.12)" : "0 1px 3px rgba(0, 0, 0, 0.04)")
+                                : "none";
 
                               return (
                                 <div
                                   key={r.id}
                                   style={{
                                     borderRadius: 8, marginBottom: 6, overflow: "hidden",
-                                    background: sel ? "rgba(37, 99, 235, 0.12)" : "rgba(255, 255, 255, 0.02)",
-                                    border: sel ? "1px solid rgba(96, 165, 250, 0.4)" : "1px solid rgba(255, 255, 255, 0.05)",
-                                    borderLeft: sel ? "3px solid #3b82f6" : "3px solid transparent",
+                                    background: cardBg,
+                                    border: cardBorder,
+                                    borderLeft: cardBorderLeft,
+                                    boxShadow: cardShadow,
                                     transition: "all 0.15s ease"
                                   }}
                                 >
@@ -1331,18 +1378,22 @@ function Terminal() {
                                     }}
                                   >
                                     <div style={{ minWidth: 0, flex: 1, paddingRight: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                                      <span style={{ fontSize: 10, color: "var(--text-muted)", transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
+                                      <span style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
                                         ▶
                                       </span>
                                       <div>
-                                        <div style={{ fontWeight: 800, fontSize: 13, color: "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        <div style={{
+                                          fontWeight: 800, fontSize: 13,
+                                          color: isLight ? "#0f172a" : "#f8fafc",
+                                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
+                                        }}>
                                           {r.tradingSymbol}
                                         </div>
                                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                                          <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: segBg, color: segColor }}>
+                                          <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: segBg, color: segColor, border: segBorder }}>
                                             {r.exchange}
                                           </span>
-                                          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                                          <span style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", fontWeight: 500 }}>
                                             {r.segment}
                                           </span>
                                         </div>
@@ -1352,19 +1403,26 @@ function Terminal() {
                                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                                       <div style={{
                                         fontWeight: 800, fontSize: 13, fontFamily: "var(--font-mono)",
-                                        color: ltp > 0 ? (up ? "#4ade80" : "#f87171") : "var(--text-secondary)"
+                                        color: ltp > 0
+                                          ? (isLight ? (up ? "#16a34a" : "#dc2626") : (up ? "#4ade80" : "#f87171"))
+                                          : (isLight ? "#64748b" : "var(--text-secondary)")
                                       }}>
                                         {ltp > 0 ? `₹${ltp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                                       </div>
                                       <div style={{
                                         fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700,
-                                        color: up ? "#4ade80" : "#f87171", marginTop: 1
+                                        color: isLight ? (up ? "#16a34a" : "#dc2626") : (up ? "#4ade80" : "#f87171"),
+                                        marginTop: 1
                                       }}>
                                         {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
                                       </div>
                                       <div style={{
-                                        fontSize: 9, fontFamily: "var(--font-mono)", color: "#94a3b8",
-                                        marginTop: 2, background: "rgba(255, 255, 255, 0.05)", padding: "1px 4px", borderRadius: 3
+                                        fontSize: 9, fontFamily: "var(--font-mono)",
+                                        color: isLight ? "#475569" : "#94a3b8",
+                                        marginTop: 2,
+                                        background: isLight ? "#f1f5f9" : "rgba(255, 255, 255, 0.05)",
+                                        border: isLight ? "1px solid #e2e8f0" : "none",
+                                        padding: "1px 5px", borderRadius: 3
                                       }}>
                                         Close: ₹{close > 0 ? close.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                                       </div>
@@ -1374,28 +1432,36 @@ function Terminal() {
                                   {/* Expandable Accordion Drawer */}
                                   {isExpanded && (
                                     <div style={{
-                                      padding: "8px 10px 10px", background: "rgba(0, 0, 0, 0.25)",
-                                      borderTop: "1px solid rgba(255, 255, 255, 0.05)", display: "flex",
-                                      flexDirection: "column", gap: 6
+                                      padding: "8px 10px 10px",
+                                      background: isLight ? "#f8fafc" : "rgba(0, 0, 0, 0.25)",
+                                      borderTop: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.05)",
+                                      display: "flex", flexDirection: "column", gap: 6
                                     }}>
                                       {/* Quick Price Summary Bar */}
                                       <div style={{
                                         display: "flex", justifyContent: "space-between", alignItems: "center",
-                                        padding: "4px 8px", background: "rgba(255, 255, 255, 0.03)", borderRadius: 5,
-                                        fontSize: 10, fontFamily: "var(--font-mono)", color: "#cbd5e1"
+                                        padding: "5px 8px",
+                                        background: isLight ? "#ffffff" : "rgba(255, 255, 255, 0.03)",
+                                        border: isLight ? "1px solid #e2e8f0" : "none",
+                                        borderRadius: 5,
+                                        fontSize: 10, fontFamily: "var(--font-mono)",
+                                        color: isLight ? "#334155" : "#cbd5e1"
                                       }}>
-                                        <span>Last: <strong style={{ color: up ? "#4ade80" : "#f87171" }}>₹{ltp.toFixed(2)}</strong></span>
-                                        <span>Last Close: <strong>₹{close.toFixed(2)}</strong></span>
-                                        <span style={{ color: up ? "#4ade80" : "#f87171" }}>{up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)</span>
+                                        <span>Last: <strong style={{ color: isLight ? (up ? "#16a34a" : "#dc2626") : (up ? "#4ade80" : "#f87171") }}>₹{ltp.toFixed(2)}</strong></span>
+                                        <span>Last Close: <strong style={{ color: isLight ? "#0f172a" : "#f8fafc" }}>₹{close.toFixed(2)}</strong></span>
+                                        <span style={{ color: isLight ? (up ? "#16a34a" : "#dc2626") : (up ? "#4ade80" : "#f87171"), fontWeight: 700 }}>
+                                          {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
+                                        </span>
                                       </div>
+
                                       {/* Quick Order Actions */}
                                       <div style={{ display: "flex", gap: 6 }}>
                                         <button
                                           onClick={(e) => { e.stopPropagation(); setInstrument(r); setSide("BUY"); }}
                                           style={{
                                             flex: 1, padding: "6px", borderRadius: 6, border: "none",
-                                            background: "linear-gradient(135deg, #16a34a, #22c55e)", color: "#fff",
-                                            fontWeight: 800, fontSize: 11, cursor: "pointer", boxShadow: "0 2px 8px rgba(34, 197, 94, 0.3)"
+                                            background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff",
+                                            fontWeight: 800, fontSize: 11, cursor: "pointer", boxShadow: "0 2px 8px rgba(22, 163, 74, 0.3)"
                                           }}
                                         >
                                           🟢 BUY
@@ -1404,8 +1470,8 @@ function Terminal() {
                                           onClick={(e) => { e.stopPropagation(); setInstrument(r); setSide("SELL"); }}
                                           style={{
                                             flex: 1, padding: "6px", borderRadius: 6, border: "none",
-                                            background: "linear-gradient(135deg, #dc2626, #ef4444)", color: "#fff",
-                                            fontWeight: 800, fontSize: 11, cursor: "pointer", boxShadow: "0 2px 8px rgba(239, 68, 68, 0.3)"
+                                            background: "linear-gradient(135deg, #dc2626, #b91c1c)", color: "#fff",
+                                            fontWeight: 800, fontSize: 11, cursor: "pointer", boxShadow: "0 2px 8px rgba(220, 38, 38, 0.3)"
                                           }}
                                         >
                                           🔴 SELL
@@ -1418,9 +1484,11 @@ function Terminal() {
                                           title="View Option Chain"
                                           onClick={(e) => { e.stopPropagation(); setChainItem(r); }}
                                           style={{
-                                            flex: 1, background: "rgba(245, 158, 11, 0.15)",
-                                            border: "1px solid rgba(245, 158, 11, 0.35)",
-                                            color: "#fbbf24", borderRadius: 5, padding: "4px 4px",
+                                            flex: 1,
+                                            background: isLight ? "#fffbeb" : "rgba(245, 158, 11, 0.15)",
+                                            border: isLight ? "1px solid #fcd34d" : "1px solid rgba(245, 158, 11, 0.35)",
+                                            color: isLight ? "#b45309" : "#fbbf24",
+                                            borderRadius: 5, padding: "5px 4px",
                                             fontSize: 10, fontWeight: 700, cursor: "pointer", textAlign: "center"
                                           }}
                                         >
@@ -1431,9 +1499,11 @@ function Terminal() {
                                           title="View Market Depth (Level 2)"
                                           onClick={(e) => { e.stopPropagation(); setDepthItem(r); }}
                                           style={{
-                                            flex: 1, background: "rgba(56, 189, 248, 0.15)",
-                                            border: "1px solid rgba(56, 189, 248, 0.35)",
-                                            color: "#38bdf8", borderRadius: 5, padding: "4px 4px",
+                                            flex: 1,
+                                            background: isLight ? "#f0f9ff" : "rgba(56, 189, 248, 0.15)",
+                                            border: isLight ? "1px solid #bae6fd" : "1px solid rgba(56, 189, 248, 0.35)",
+                                            color: isLight ? "#0369a1" : "#38bdf8",
+                                            borderRadius: 5, padding: "5px 4px",
                                             fontSize: 10, fontWeight: 700, cursor: "pointer", textAlign: "center"
                                           }}
                                         >
@@ -1444,9 +1514,11 @@ function Terminal() {
                                           title="View Historical Market Data"
                                           onClick={(e) => { e.stopPropagation(); setHistoryItem(r); }}
                                           style={{
-                                            flex: 1, background: "rgba(99, 102, 241, 0.15)",
-                                            border: "1px solid rgba(99, 102, 241, 0.35)",
-                                            color: "#818cf8", borderRadius: 5, padding: "4px 4px",
+                                            flex: 1,
+                                            background: isLight ? "#eef2ff" : "rgba(99, 102, 241, 0.15)",
+                                            border: isLight ? "1px solid #c7d2fe" : "1px solid rgba(99, 102, 241, 0.35)",
+                                            color: isLight ? "#4338ca" : "#818cf8",
+                                            borderRadius: 5, padding: "5px 4px",
                                             fontSize: 10, fontWeight: 700, cursor: "pointer", textAlign: "center"
                                           }}
                                         >
@@ -1472,16 +1544,21 @@ function Terminal() {
                               onClick={() => setPage((p) => Math.max(p - 1, 1))}
                               disabled={page === 1}
                               style={{
-                                padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)",
-                                background: page === 1 ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.06)",
-                                color: page === 1 ? "var(--text-muted)" : "#f8fafc",
+                                padding: "4px 10px", borderRadius: 5,
+                                border: isLight ? "1px solid #cbd5e1" : "1px solid var(--border)",
+                                background: isLight
+                                  ? (page === 1 ? "#f1f5f9" : "#ffffff")
+                                  : (page === 1 ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.06)"),
+                                color: isLight
+                                  ? (page === 1 ? "#94a3b8" : "#0f172a")
+                                  : (page === 1 ? "var(--text-muted)" : "#f8fafc"),
                                 fontSize: 11, fontWeight: 700, cursor: page === 1 ? "not-allowed" : "pointer"
                               }}
                             >
                               ← Prev
                             </button>
 
-                            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: isLight ? "#64748b" : "var(--text-muted)" }}>
                               Page {page} of {totalPages} ({filteredResults.length})
                             </span>
 
@@ -1489,9 +1566,14 @@ function Terminal() {
                               onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
                               disabled={page === totalPages}
                               style={{
-                                padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)",
-                                background: page === totalPages ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.06)",
-                                color: page === totalPages ? "var(--text-muted)" : "#f8fafc",
+                                padding: "4px 10px", borderRadius: 5,
+                                border: isLight ? "1px solid #cbd5e1" : "1px solid var(--border)",
+                                background: isLight
+                                  ? (page === totalPages ? "#f1f5f9" : "#ffffff")
+                                  : (page === totalPages ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.06)"),
+                                color: isLight
+                                  ? (page === totalPages ? "#94a3b8" : "#0f172a")
+                                  : (page === totalPages ? "var(--text-muted)" : "#f8fafc"),
                                 fontSize: 11, fontWeight: 700, cursor: page === totalPages ? "not-allowed" : "pointer"
                               }}
                             >
@@ -1590,24 +1672,26 @@ function Terminal() {
                           <div
                             key={`closed-${p.id || i}`}
                             style={{
-                              background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)",
-                              borderRadius: 8, padding: "8px 10px", marginBottom: 6, opacity: 0.9
+                              background: isLight ? "#ffffff" : "rgba(255,255,255,0.02)",
+                              border: isLight ? "1px solid #e2e8f0" : "1px solid var(--border)",
+                              boxShadow: isLight ? "0 1px 3px rgba(0,0,0,0.04)" : "none",
+                              borderRadius: 8, padding: "8px 10px", marginBottom: 6, opacity: 0.95
                             }}
                           >
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                               <div>
-                                <div style={{ fontWeight: 700, fontSize: 12, color: "#f8fafc" }}>
-                                  {p.instrument?.tradingSymbol ?? "—"} <span style={{ fontSize: 10, color: "var(--text-muted)" }}>({p.productType})</span>
+                                <div style={{ fontWeight: 700, fontSize: 12, color: isLight ? "#0f172a" : "#f8fafc" }}>
+                                  {p.instrument?.tradingSymbol ?? "—"} <span style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)" }}>({p.productType})</span>
                                 </div>
-                                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
-                                  Entry: ₹{Number(p.avgPrice).toFixed(2)} · <span style={{ color: "#a5b4fc" }}>Squared Off</span>
+                                <div style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", marginTop: 2 }}>
+                                  Entry: ₹{Number(p.avgPrice).toFixed(2)} · <span style={{ color: isLight ? "#4f46e5" : "#a5b4fc", fontWeight: 600 }}>Squared Off</span>
                                 </div>
                               </div>
                               <div style={{ textAlign: "right" }}>
-                                <div style={{ fontSize: 12, fontWeight: 800, fontFamily: "var(--font-mono)", color: isProfit ? "#4ade80" : "#f87171" }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, fontFamily: "var(--font-mono)", color: isProfit ? (isLight ? "#16a34a" : "#4ade80") : (isLight ? "#dc2626" : "#f87171") }}>
                                   {isProfit ? "+" : ""}₹{pnl.toFixed(2)}
                                 </div>
-                                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                                <div style={{ fontSize: 9, fontWeight: 700, color: isLight ? "#64748b" : "var(--text-muted)", textTransform: "uppercase" }}>
                                   Realized
                                 </div>
                               </div>
@@ -1664,7 +1748,9 @@ function Terminal() {
                         <div
                           key={h.id || i}
                           style={{
-                            background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)",
+                            background: isLight ? "#ffffff" : "rgba(255,255,255,0.02)",
+                            border: isLight ? "1px solid #e2e8f0" : "1px solid var(--border)",
+                            boxShadow: isLight ? "0 1px 3px rgba(0,0,0,0.04)" : "none",
                             borderRadius: 8, padding: "10px 12px", marginBottom: 8, cursor: "pointer",
                             transition: "all 0.15s ease"
                           }}
@@ -1672,25 +1758,25 @@ function Terminal() {
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                             <div>
-                              <div style={{ fontWeight: 800, fontSize: 13, color: "#f8fafc" }}>
+                              <div style={{ fontWeight: 800, fontSize: 13, color: isLight ? "#0f172a" : "#f8fafc" }}>
                                 {h.instrument?.tradingSymbol ?? "—"}
                               </div>
-                              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                              <div style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", marginTop: 2 }}>
                                 Qty {h.quantity} · Avg ₹{avgPrice.toFixed(2)}
                               </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "var(--font-mono)", color: "#f8fafc" }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "var(--font-mono)", color: isLight ? "#0f172a" : "#f8fafc" }}>
                                 ₹{currentValue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                               </div>
-                              <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "var(--font-mono)", color: isProfit ? "#4ade80" : "#f43f5e", marginTop: 2 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "var(--font-mono)", color: isProfit ? (isLight ? "#16a34a" : "#4ade80") : (isLight ? "#dc2626" : "#f43f5e"), marginTop: 2 }}>
                                 {isProfit ? "+" : ""}₹{pnl.toFixed(2)} ({isProfit ? "+" : ""}{pnlPct.toFixed(2)}%)
                               </div>
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                            <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingTop: 6, borderTop: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255,255,255,0.05)" }}>
+                            <span style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                               LTP: ₹{curPrice.toFixed(2)} · Close: ₹{closePrice.toFixed(2)}
                             </span>
                             <button
@@ -1703,8 +1789,10 @@ function Terminal() {
                                 setQty(h.quantity);
                               }}
                               style={{
-                                background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.35)",
-                                color: "#f87171", borderRadius: 4, padding: "2px 8px", fontSize: 10,
+                                background: isLight ? "#fef2f2" : "rgba(239, 68, 68, 0.15)",
+                                border: isLight ? "1px solid #fecaca" : "1px solid rgba(239, 68, 68, 0.35)",
+                                color: isLight ? "#dc2626" : "#f87171",
+                                borderRadius: 4, padding: "2px 8px", fontSize: 10,
                                 fontWeight: 700, cursor: "pointer"
                               }}
                             >
@@ -1733,21 +1821,23 @@ function Terminal() {
                       <div
                         key={i}
                         style={{
-                          background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)",
+                          background: isLight ? "#ffffff" : "rgba(255,255,255,0.02)",
+                          border: isLight ? "1px solid #e2e8f0" : "1px solid var(--border)",
+                          boxShadow: isLight ? "0 1px 3px rgba(0,0,0,0.04)" : "none",
                           borderRadius: 8, padding: "8px 10px", marginBottom: 6
                         }}
                       >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontWeight: 700, fontSize: 12, color: "#f8fafc" }}>
+                          <span style={{ fontWeight: 700, fontSize: 12, color: isLight ? "#0f172a" : "#f8fafc" }}>
                             {o.instrument?.tradingSymbol ?? "—"}
                           </span>
                           <span className={`tag ${o.transactionType === "BUY" ? "tag-buy" : "tag-sell"}`}>
                             {o.transactionType}
                           </span>
                         </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", marginTop: 4 }}>
                           <span>Qty: {o.quantity} @ ₹{Number(o.price || o.averagePrice || 0).toFixed(2)}</span>
-                          <span style={{ fontWeight: 700, color: o.status === "COMPLETE" ? "#4ade80" : "#f43f5e" }}>
+                          <span style={{ fontWeight: 700, color: o.status === "COMPLETE" ? (isLight ? "#16a34a" : "#4ade80") : (isLight ? "#dc2626" : "#f43f5e") }}>
                             {o.status}
                           </span>
                         </div>
@@ -2023,7 +2113,7 @@ function Terminal() {
 
           {/* 5-Level Market Depth & Quotes */}
           {instrument && quote && (
-            <MarketDepthCard quote={quote} instrument={instrument} />
+            <MarketDepthCard quote={quote} instrument={instrument} isLight={isLight} />
           )}
 
           {/* Competition rank */}
@@ -2668,8 +2758,8 @@ function Terminal() {
                             {/* Strike Price Column */}
                             <td style={{
                               padding: "7px 12px", textAlign: "center", fontWeight: 800,
-                              color: isATM ? "#fbbf24" : "#f8fafc", background: strikeBg,
-                              fontFamily: "var(--font-mono)", borderRight: "1px solid rgba(255,255,255,0.1)"
+                              color: isATM ? "#fbbf24" : (isLight ? "#0f172a" : "#f8fafc"), background: strikeBg,
+                              fontFamily: "var(--font-mono)", borderRight: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255,255,255,0.1)"
                             }}>
                               {strike} {isATM && <span style={{ fontSize: 9, background: "#eab308", color: "#000", padding: "1px 4px", borderRadius: 3, marginLeft: 4, fontWeight: 900 }}>ATM</span>}
                             </td>
