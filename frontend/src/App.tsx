@@ -82,11 +82,11 @@ function AdminApp() {
 function UserApp() {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const isTerminal = location.pathname === "/trade";
+  const isTerminal = location.pathname === "/trade" || location.pathname === "/terminal";
 
   return (
     <div style={{ minHeight: "100vh", background: "#080b12", display: "flex", flexDirection: "column" }}>
-      {/* Modern navbar — hidden on /trade (terminal has its own) */}
+      {/* Modern navbar — hidden on /trade & /terminal (terminal has its own) */}
       {!isTerminal && (
         <nav style={{
           background: "#0d1117",
@@ -125,8 +125,8 @@ function UserApp() {
                     padding: "0 14px", height: "100%",
                     display: "flex", alignItems: "center",
                     fontSize: 13, fontWeight: 500, textDecoration: "none",
-                    color: location.pathname === l.to ? "#60a5fa" : l.red ? "#f85149" : "#8b949e",
-                    borderBottom: location.pathname === l.to ? "2px solid #2563eb" : "2px solid transparent",
+                    color: (location.pathname === l.to || (l.to === "/trade" && location.pathname === "/terminal")) ? "#60a5fa" : l.red ? "#f85149" : "#8b949e",
+                    borderBottom: (location.pathname === l.to || (l.to === "/trade" && location.pathname === "/terminal")) ? "2px solid #2563eb" : "2px solid transparent",
                     transition: "color 0.15s",
                   }}>{l.label}</Link>
                 ))}
@@ -179,6 +179,7 @@ function UserApp() {
           <Route path="/admin/zerodha/callback" element={<ZerodhaCallback />} />
           <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/trade" element={<PrivateRoute><Trade /></PrivateRoute>} />
+          <Route path="/terminal" element={<PrivateRoute><Trade /></PrivateRoute>} />
           <Route path="/portfolio" element={<PrivateRoute><Portfolio /></PrivateRoute>} />
           <Route path="/options" element={<PrivateRoute><OptionsChain /></PrivateRoute>} />
           <Route path="/contests" element={<PrivateRoute><Contests /></PrivateRoute>} />

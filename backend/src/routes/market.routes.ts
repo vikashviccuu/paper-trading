@@ -5,7 +5,7 @@ import { prisma } from "../utils/prisma";
 import { Prisma } from "@prisma/client";
 import { InstrumentSyncService } from "../services/InstrumentSyncService";
 import { isMarketOpen, getIndianTime } from "../utils/marketHours";
-import { getAccurateBasePrice, getAccuratePrevClose } from "../utils/marketDataReference";
+import { getAccurateBasePrice, getAccuratePrevClose, ACCURATE_MARKET_PRICES, ACCURATE_MARKET_PREV_CLOSE, INDEX_CANONICAL_ALIASES } from "../utils/marketDataReference";
 
 export const marketRouter = Router();
 
@@ -26,15 +26,32 @@ marketRouter.get("/status", (req, res) => {
 marketRouter.use(requireAuth);
 
 function enrichInstrument(inst: any) {
-  const rawLtp = Number(inst.lastPrice);
-  const ltp = rawLtp > 0 && rawLtp !== 1000 && rawLtp !== 1500
-    ? rawLtp
-    : getAccurateBasePrice(inst, inst.instrumentToken);
-  const close = getAccuratePrevClose(inst, inst.instrumentToken);
+  const token = String(inst.instrumentToken);
+  const sym = String(inst.tradingSymbol || "").toUpperCase();
+  const alias = INDEX_CANONICAL_ALIASES[sym] || INDEX_CANONICAL_ALIASES[token];
+
+  const refPrice = ACCURATE_MARKET_PRICES[token] || ACCURATE_MARKET_PRICES[sym] || (alias ? ACCURATE_MARKET_PRICES[alias.token] : undefined);
+  const refClose = ACCURATE_MARKET_PREV_CLOSE[token] || ACCURATE_MARKET_PREV_CLOSE[sym] || (alias ? ACCURATE_MARKET_PREV_CLOSE[alias.token] : undefined);
+
+  let ltp: number;
+  let close: number;
+
+  if (refPrice !== undefined && refClose !== undefined) {
+    ltp = refPrice;
+    close = refClose;
+  } else {
+    const rawLtp = Number(inst.lastPrice);
+    ltp = rawLtp > 0 && rawLtp !== 1000 && rawLtp !== 1500 && rawLtp !== 450
+      ? rawLtp
+      : getAccurateBasePrice(inst, inst.instrumentToken);
+    close = getAccuratePrevClose(inst, inst.instrumentToken);
+  }
+
   const netChange = Number((ltp - close).toFixed(2));
   const changePercent = close > 0 ? Number(((netChange / close) * 100).toFixed(2)) : 0;
   return {
     ...inst,
+    tradingSymbol: alias?.displayLabel || inst.tradingSymbol,
     lastPrice: ltp,
     closePrice: close,
     close,
@@ -44,13 +61,23 @@ function enrichInstrument(inst: any) {
 }
 
 const TOP_PRIORITY_SYMBOLS = [
-  "NIFTY 50", "BANKNIFTY", "FINNIFTY", "MIDCAP", "INDIA VIX",
+  "NIFTY 50", "NIFTY BANK", "BANKNIFTY", "NIFTY FIN SERVICE", "FINNIFTY",
+  "NIFTY MID SELECT", "MIDCAP", "INDIA VIX",
   "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN",
   "BHARTIARTL", "ITC", "LT", "KOTAKBANK", "AXISBANK", "HINDUNILVR",
   "BAJFINANCE", "MARUTI", "SUNPHARMA", "TITAN", "TMPV", "TMCV", "TATASTEEL",
   "WIPRO", "HCLTECH", "M&M", "ADANIENT", "ADANIPORTS", "COALINDIA",
   "BAJAJ-AUTO", "ULTRACEMCO", "ONGC", "NTPC", "POWERGRID"
 ];
+
+const BENCHMARK_ORDER: Record<string, number> = {
+  "256265": 1, // NIFTY 50
+  "260105": 2, // BANKNIFTY
+  "257801": 3, // FINNIFTY
+  "288009": 4, // MIDCAP
+  "264969": 5, // INDIA VIX
+  "2067713": 99, // Secondary midcap token
+};
 
 /** Search the locally cached instrument master (populated by /sync-instruments). */
 marketRouter.get("/instruments", async (req, res) => {
@@ -65,12 +92,19 @@ marketRouter.get("/instruments", async (req, res) => {
   const segmentFilter = segment && segment !== "ALL" ? { segment: segment as any } : {};
 
   if (q) {
+    const searchTerms = [q];
+    const alias = INDEX_CANONICAL_ALIASES[q.toUpperCase()];
+    if (alias) {
+      searchTerms.push(alias.officialSymbol, alias.displayLabel, alias.token);
+    }
+    const orFilters = searchTerms.flatMap((term) => [
+      { tradingSymbol: { contains: term, mode: "insensitive" as const } },
+      { name: { contains: term, mode: "insensitive" as const } },
+    ]);
+
     const instruments = await prisma.instrument.findMany({
       where: {
-        OR: [
-          { tradingSymbol: { contains: q, mode: "insensitive" } },
-          { name: { contains: q, mode: "insensitive" } },
-        ],
+        OR: orFilters,
         ...exchangeFilter,
         ...segmentFilter,
       },
@@ -118,23 +152,31 @@ marketRouter.get("/instruments", async (req, res) => {
   // NSE or ALL: Prioritize core market benchmarks & large caps
   const priorityItems = await prisma.instrument.findMany({
     where: {
-      tradingSymbol: { in: TOP_PRIORITY_SYMBOLS },
+      OR: [
+        { tradingSymbol: { in: TOP_PRIORITY_SYMBOLS } },
+        { instrumentToken: { in: Object.keys(BENCHMARK_ORDER) } },
+      ],
       ...exchangeFilter,
       ...segmentFilter,
     },
   });
 
-  priorityItems.sort((a, b) => {
-    const ia = TOP_PRIORITY_SYMBOLS.indexOf(a.tradingSymbol);
-    const ib = TOP_PRIORITY_SYMBOLS.indexOf(b.tradingSymbol);
-    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  const hasPrimaryMidcap = priorityItems.some((p) => p.instrumentToken === "288009");
+  const filteredPriority = hasPrimaryMidcap
+    ? priorityItems.filter((p) => p.instrumentToken !== "2067713")
+    : priorityItems;
+
+  filteredPriority.sort((a, b) => {
+    const oa = BENCHMARK_ORDER[a.instrumentToken] ?? (TOP_PRIORITY_SYMBOLS.indexOf(a.tradingSymbol) + 10);
+    const ob = BENCHMARK_ORDER[b.instrumentToken] ?? (TOP_PRIORITY_SYMBOLS.indexOf(b.tradingSymbol) + 10);
+    return oa - ob;
   });
 
-  if (priorityItems.length >= limit) {
-    return res.json(priorityItems.slice(0, limit).map(enrichInstrument));
+  if (filteredPriority.length >= limit) {
+    return res.json(filteredPriority.slice(0, limit).map(enrichInstrument));
   }
 
-  const priorityTokens = new Set(priorityItems.map((p) => p.instrumentToken));
+  const priorityTokens = new Set(filteredPriority.map((p) => p.instrumentToken));
   const remaining = await prisma.instrument.findMany({
     where: {
       instrumentToken: { notIn: Array.from(priorityTokens) },
@@ -142,12 +184,12 @@ marketRouter.get("/instruments", async (req, res) => {
       ...segmentFilter,
       lotSize: 1,
     },
-    take: limit - priorityItems.length,
+    take: limit - filteredPriority.length,
     skip,
     orderBy: { tradingSymbol: "asc" },
   });
 
-  return res.json([...priorityItems, ...remaining].map(enrichInstrument));
+  return res.json([...filteredPriority, ...remaining].map(enrichInstrument));
 });
 
 /** Pulls the full instrument dump from Zerodha Kite Connect into Postgres across NSE, NFO, MCX. */
