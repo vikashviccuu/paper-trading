@@ -146,7 +146,7 @@ function KiteStatusBar() {
 }
 
 // ── Live candlestick chart ───────────────────────────────────
-function LiveChart({ instrument, bars, timeframe }: { instrument: Instrument; bars: CandlestickData[]; timeframe: string }) {
+function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrument; bars: CandlestickData[]; timeframe: string; theme?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -155,24 +155,65 @@ function LiveChart({ instrument, bars, timeframe }: { instrument: Instrument; ba
 
   useEffect(() => {
     if (!ref.current) return;
+    const isLight = theme === "modern-white" || theme === "nordic-snow";
     const c = createChart(ref.current, {
       width: ref.current.clientWidth,
       height: ref.current.clientHeight || 320,
-      layout: { background: { color: "#080b12" }, textColor: "#484f58" },
-      grid: { vertLines: { color: "#1e2d3d" }, horzLines: { color: "#1e2d3d" } },
-      crosshair: { vertLine: { color: "#2563eb66" }, horzLine: { color: "#2563eb66" } },
-      rightPriceScale: { borderColor: "#1e2d3d" },
-      timeScale: { borderColor: "#1e2d3d", timeVisible: true, secondsVisible: false },
+      layout: {
+        background: { color: isLight ? "#ffffff" : "#080b12" },
+        textColor: isLight ? "#475569" : "#484f58"
+      },
+      grid: {
+        vertLines: { color: isLight ? "#f1f5f9" : "#1e2d3d" },
+        horzLines: { color: isLight ? "#f1f5f9" : "#1e2d3d" }
+      },
+      crosshair: {
+        vertLine: { color: isLight ? "#2563eb44" : "#2563eb66" },
+        horzLine: { color: isLight ? "#2563eb44" : "#2563eb66" }
+      },
+      rightPriceScale: { borderColor: isLight ? "#e2e8f0" : "#1e2d3d" },
+      timeScale: { borderColor: isLight ? "#e2e8f0" : "#1e2d3d", timeVisible: true, secondsVisible: false },
     });
     const s = c.addCandlestickSeries({
-      upColor: "#3fb950", downColor: "#f85149",
-      borderVisible: false, wickUpColor: "#3fb950", wickDownColor: "#f85149",
+      upColor: isLight ? "#16a34a" : "#3fb950",
+      downColor: isLight ? "#dc2626" : "#f85149",
+      borderVisible: false,
+      wickUpColor: isLight ? "#16a34a" : "#3fb950",
+      wickDownColor: isLight ? "#dc2626" : "#f85149",
     });
     chart.current = c; series.current = s;
     const onResize = () => ref.current && c.applyOptions({ width: ref.current.clientWidth, height: ref.current.clientHeight || 320 });
     window.addEventListener("resize", onResize);
     return () => { window.removeEventListener("resize", onResize); c.remove(); };
   }, []);
+
+  // Update chart layout colors when theme changes
+  useEffect(() => {
+    if (!chart.current || !series.current) return;
+    const isLight = theme === "modern-white" || theme === "nordic-snow";
+    chart.current.applyOptions({
+      layout: {
+        background: { color: isLight ? "#ffffff" : "#080b12" },
+        textColor: isLight ? "#475569" : "#484f58"
+      },
+      grid: {
+        vertLines: { color: isLight ? "#f1f5f9" : "#1e2d3d" },
+        horzLines: { color: isLight ? "#f1f5f9" : "#1e2d3d" }
+      },
+      crosshair: {
+        vertLine: { color: isLight ? "#2563eb44" : "#2563eb66" },
+        horzLine: { color: isLight ? "#2563eb44" : "#2563eb66" }
+      },
+      rightPriceScale: { borderColor: isLight ? "#e2e8f0" : "#1e2d3d" },
+      timeScale: { borderColor: isLight ? "#e2e8f0" : "#1e2d3d" },
+    });
+    series.current.applyOptions({
+      upColor: isLight ? "#16a34a" : "#3fb950",
+      downColor: isLight ? "#dc2626" : "#f85149",
+      wickUpColor: isLight ? "#16a34a" : "#3fb950",
+      wickDownColor: isLight ? "#dc2626" : "#f85149",
+    });
+  }, [theme]);
 
   useEffect(() => {
     if (!series.current) return;
@@ -363,6 +404,24 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
 // ── Modern Terminal Color Themes ─────────────────────────────
 const TERMINAL_THEMES = [
   {
+    id: "modern-white",
+    name: "Modern White",
+    desc: "Clean Pure White & Precision Blue",
+    dot: "#2563eb",
+    bg: "#f8fafc",
+    surface: "#ffffff",
+    accent: "#2563eb",
+  },
+  {
+    id: "nordic-snow",
+    name: "Nordic Snow",
+    desc: "Minimalist Studio White & Sky Cyan",
+    dot: "#0284c7",
+    bg: "#ffffff",
+    surface: "#ffffff",
+    accent: "#0284c7",
+  },
+  {
     id: "cyber-midnight",
     name: "Cyber Midnight",
     desc: "Indigo & Deep Space Blue",
@@ -426,9 +485,9 @@ function Terminal() {
   const contestId = sp.get("contestId") ?? undefined;
   const isAdmin   = location.pathname.startsWith("/admin");
 
-  // Modern Theme Engine
+  // Modern Theme Engine (Defaults to Modern White)
   const [theme, setTheme] = useState<string>(() => {
-    return localStorage.getItem("terminal_theme") || "cyber-midnight";
+    return localStorage.getItem("terminal_theme") || "modern-white";
   });
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
@@ -825,6 +884,7 @@ function Terminal() {
   const deployedPct = wallet && wallet > 0 ? Math.min(100, positions.reduce((s: number, p: any) => s + Math.abs(+p.quantity) * +(p.averagePrice ?? p.avgPrice ?? 0), 0) / wallet * 100) : 0;
   const margin      = instrument && displayLtp ? (Number(displayLtp) * qty * (instrument.lotSize || 1) * (ptype === "DELIVERY" ? 1.0 : 0.2)) : 0;
   const currentThemeObj = TERMINAL_THEMES.find((t) => t.id === theme) || TERMINAL_THEMES[0];
+  const isLight = theme === "modern-white" || theme === "nordic-snow";
 
   return (
     <div className="t-root" data-theme={theme}>
@@ -1756,7 +1816,7 @@ function Terminal() {
           {/* Chart */}
           <div className="t-chart">
             {instrument
-              ? <LiveChart instrument={instrument} bars={bars} timeframe={tf} />
+              ? <LiveChart instrument={instrument} bars={bars} timeframe={tf} theme={theme} />
               : (
                 <div className="t-chart-empty">
                   <div className="icon">📈</div>
@@ -1983,21 +2043,23 @@ function Terminal() {
       {historyItem && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 1000,
-          background: "rgba(0, 0, 0, 0.78)", backdropFilter: "blur(10px)",
+          background: isLight ? "rgba(15, 23, 42, 0.45)" : "rgba(0, 0, 0, 0.78)", backdropFilter: "blur(10px)",
           display: "flex", alignItems: "center", justifyContent: "center", padding: 16
         }} onClick={() => setHistoryItem(null)}>
           <div style={{
             width: "100%", maxWidth: 840, maxHeight: "90vh",
-            background: "rgba(13, 17, 28, 0.98)", border: "1px solid rgba(99, 102, 241, 0.35)",
-            borderRadius: 16, padding: "24px 28px", boxShadow: "0 25px 60px rgba(0,0,0,0.85)",
+            background: isLight ? "#ffffff" : "rgba(13, 17, 28, 0.98)",
+            border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(99, 102, 241, 0.35)",
+            borderRadius: 16, padding: "24px 28px",
+            boxShadow: isLight ? "0 25px 50px -12px rgba(0,0,0,0.15)" : "0 25px 60px rgba(0,0,0,0.85)",
             display: "flex", flexDirection: "column", overflow: "hidden"
           }} onClick={(e) => e.stopPropagation()}>
             
             {/* Modal Header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, borderBottom: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255,255,255,0.08)", paddingBottom: 14 }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <h2 style={{ fontSize: 20, fontWeight: 900, color: "#f8fafc", margin: 0 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 900, color: isLight ? "#0f172a" : "#f8fafc", margin: 0 }}>
                     {historyItem.tradingSymbol}
                   </h2>
                   <span style={{ padding: "2px 8px", borderRadius: 4, background: "rgba(99, 102, 241, 0.2)", border: "1px solid rgba(99, 102, 241, 0.4)", color: "#a5b4fc", fontSize: 11, fontWeight: 700 }}>
@@ -2180,24 +2242,26 @@ function Terminal() {
         return (
           <div style={{
             position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-            background: "rgba(3, 7, 18, 0.82)", backdropFilter: "blur(8px)",
+            background: isLight ? "rgba(15, 23, 42, 0.45)" : "rgba(3, 7, 18, 0.82)", backdropFilter: "blur(8px)",
             zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center",
             padding: 20
           }}>
             <div style={{
-              background: "#0f172a", border: "1px solid rgba(255, 255, 255, 0.12)",
+              background: isLight ? "#ffffff" : "#0f172a",
+              border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.12)",
               borderRadius: 16, width: "100%", maxWidth: 640, overflow: "hidden",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)", display: "flex", flexDirection: "column"
+              boxShadow: isLight ? "0 25px 50px -12px rgba(0, 0, 0, 0.15)" : "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
+              display: "flex", flexDirection: "column"
             }}>
               {/* Header */}
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "16px 20px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                background: "rgba(255,255,255,0.02)"
+                padding: "16px 20px", borderBottom: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.08)",
+                background: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.02)"
               }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.01em" }}>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: isLight ? "#0f172a" : "#f8fafc", letterSpacing: "-0.01em" }}>
                       {depthItem.tradingSymbol}
                     </span>
                     <span style={{ fontSize: 11, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
@@ -2392,25 +2456,27 @@ function Terminal() {
         return (
           <div style={{
             position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-            background: "rgba(3, 7, 18, 0.85)", backdropFilter: "blur(10px)",
+            background: isLight ? "rgba(15, 23, 42, 0.45)" : "rgba(3, 7, 18, 0.85)", backdropFilter: "blur(10px)",
             zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center",
             padding: 20
           }}>
             <div style={{
-              background: "#0d1117", border: "1px solid rgba(255, 255, 255, 0.12)",
+              background: isLight ? "#ffffff" : "#0d1117",
+              border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.12)",
               borderRadius: 16, width: "100%", maxWidth: 1100, maxHeight: "90vh", overflow: "hidden",
-              boxShadow: "0 25px 60px rgba(0,0,0,0.8)", display: "flex", flexDirection: "column"
+              boxShadow: isLight ? "0 25px 50px -12px rgba(0,0,0,0.15)" : "0 25px 60px rgba(0,0,0,0.8)",
+              display: "flex", flexDirection: "column"
             }}>
               {/* Header */}
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "16px 22px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                background: "rgba(255,255,255,0.02)"
+                padding: "16px 22px", borderBottom: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.08)",
+                background: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.02)"
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: isLight ? "#0f172a" : "#f8fafc" }}>
                         {chainItem.tradingSymbol} Option Chain
                       </span>
                       <span style={{ fontSize: 10, background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
@@ -2419,7 +2485,7 @@ function Terminal() {
                     </div>
                     <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3, display: "flex", alignItems: "center", gap: 14 }}>
                       <span>Spot LTP: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{liveP > 0 ? `₹${liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
-                      <span>Last Close: <strong style={{ color: "#cbd5e1", fontFamily: "var(--font-mono)" }}>{closeP > 0 ? `₹${closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
+                      <span>Last Close: <strong style={{ color: isLight ? "#64748b" : "#cbd5e1", fontFamily: "var(--font-mono)" }}>{closeP > 0 ? `₹${closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -2433,8 +2499,10 @@ function Terminal() {
                         value={chainExpiry}
                         onChange={(e) => setChainExpiry(e.target.value)}
                         style={{
-                          background: "#161b22", border: "1px solid rgba(255,255,255,0.15)",
-                          color: "#f8fafc", padding: "6px 12px", borderRadius: 6,
+                          background: isLight ? "#f8fafc" : "#161b22",
+                          border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255,255,255,0.15)",
+                          color: isLight ? "#0f172a" : "#f8fafc",
+                          padding: "6px 12px", borderRadius: 6,
                           fontSize: 12, fontWeight: 700, outline: "none", cursor: "pointer"
                         }}
                       >
@@ -2459,7 +2527,9 @@ function Terminal() {
               {/* Sentiment & PCR Banner */}
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "10px 22px", background: "rgba(0,0,0,0.25)", borderBottom: "1px solid rgba(255,255,255,0.06)",
+                padding: "10px 22px",
+                background: isLight ? "#f8fafc" : "rgba(0,0,0,0.25)",
+                borderBottom: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255,255,255,0.06)",
                 fontSize: 11, fontWeight: 700
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -2486,7 +2556,7 @@ function Terminal() {
               {/* Option Chain Table Header (CALLS | STRIKE | PUTS) */}
               <div style={{ flex: 1, overflowY: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                  <thead style={{ position: "sticky", top: 0, background: "#0d1117", zIndex: 5 }}>
+                  <thead style={{ position: "sticky", top: 0, background: isLight ? "#f8fafc" : "#0d1117", zIndex: 5 }}>
                     <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.1)", textTransform: "uppercase", fontSize: 10, letterSpacing: "0.05em" }}>
                       <th colSpan={6} style={{ padding: "8px 12px", textAlign: "center", color: "#4ade80", borderRight: "1px solid rgba(255,255,255,0.1)" }}>
                         CALLS (CE)
