@@ -5,6 +5,7 @@ import { prisma } from "../utils/prisma";
 import { Prisma } from "@prisma/client";
 import { InstrumentSyncService } from "../services/InstrumentSyncService";
 import { isMarketOpen, getIndianTime } from "../utils/marketHours";
+import { getAccurateBasePrice, getAccuratePrevClose } from "../utils/marketDataReference";
 
 export const marketRouter = Router();
 
@@ -23,6 +24,24 @@ marketRouter.get("/status", (req, res) => {
 });
 
 marketRouter.use(requireAuth);
+
+function enrichInstrument(inst: any) {
+  const rawLtp = Number(inst.lastPrice);
+  const ltp = rawLtp > 0 && rawLtp !== 1000 && rawLtp !== 1500
+    ? rawLtp
+    : getAccurateBasePrice(inst, inst.instrumentToken);
+  const close = getAccuratePrevClose(inst, inst.instrumentToken);
+  const netChange = Number((ltp - close).toFixed(2));
+  const changePercent = close > 0 ? Number(((netChange / close) * 100).toFixed(2)) : 0;
+  return {
+    ...inst,
+    lastPrice: ltp,
+    closePrice: close,
+    close,
+    netChange,
+    changePercent,
+  };
+}
 
 const TOP_PRIORITY_SYMBOLS = [
   "NIFTY 50", "BANKNIFTY", "FINNIFTY", "MIDCAP", "INDIA VIX",
@@ -61,7 +80,7 @@ marketRouter.get("/instruments", async (req, res) => {
         { tradingSymbol: "asc" },
       ],
     });
-    return res.json(instruments);
+    return res.json(instruments.map(enrichInstrument));
   }
 
   // When q is empty, return top benchmark / active instruments
@@ -80,7 +99,7 @@ marketRouter.get("/instruments", async (req, res) => {
       skip,
       orderBy: { tradingSymbol: "asc" },
     });
-    return res.json(instruments);
+    return res.json(instruments.map(enrichInstrument));
   }
 
   if (exchange === "MCX") {
@@ -93,7 +112,7 @@ marketRouter.get("/instruments", async (req, res) => {
       skip,
       orderBy: { tradingSymbol: "asc" },
     });
-    return res.json(instruments);
+    return res.json(instruments.map(enrichInstrument));
   }
 
   // NSE or ALL: Prioritize core market benchmarks & large caps
@@ -112,7 +131,7 @@ marketRouter.get("/instruments", async (req, res) => {
   });
 
   if (priorityItems.length >= limit) {
-    return res.json(priorityItems.slice(0, limit));
+    return res.json(priorityItems.slice(0, limit).map(enrichInstrument));
   }
 
   const priorityTokens = new Set(priorityItems.map((p) => p.instrumentToken));
@@ -128,7 +147,7 @@ marketRouter.get("/instruments", async (req, res) => {
     orderBy: { tradingSymbol: "asc" },
   });
 
-  return res.json([...priorityItems, ...remaining]);
+  return res.json([...priorityItems, ...remaining].map(enrichInstrument));
 });
 
 /** Pulls the full instrument dump from Zerodha Kite Connect into Postgres across NSE, NFO, MCX. */

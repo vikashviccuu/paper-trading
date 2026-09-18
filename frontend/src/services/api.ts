@@ -22,7 +22,11 @@ export interface Instrument {
   segment: "EQUITY" | "FUTURES" | "OPTIONS";
   instrumentToken: string;
   lotSize: number;
-  lastPrice?: string;
+  lastPrice?: string | number;
+  closePrice?: number;
+  close?: number;
+  netChange?: number;
+  changePercent?: number;
 }
 
 export const AuthAPI = {

@@ -12,17 +12,17 @@ const INDICES = [
   { label: "MIDCAP",    token: "288009" },
 ];
 
-const INITIAL_INDEX_DATA: Record<string, { ltp: number; chg: number; pct: number }> = {
-  "256265": { ltp: 23724.67, chg: 23.72, pct: 0.10 },
-  "260105": { ltp: 51200.00, chg: 120.00, pct: 0.23 },
-  "257801": { ltp: 23800.00, chg: 60.00, pct: 0.25 },
-  "264969": { ltp: 13.73, chg: 0.01, pct: 0.07 },
-  "288009": { ltp: 12650.00, chg: 35.00, pct: 0.28 },
+const INITIAL_INDEX_DATA: Record<string, { ltp: number; close: number; chg: number; pct: number }> = {
+  "256265": { ltp: 23724.67, close: 23700.95, chg: 23.72, pct: 0.10 },
+  "260105": { ltp: 51200.00, close: 51080.00, chg: 120.00, pct: 0.23 },
+  "257801": { ltp: 23800.00, close: 23740.00, chg: 60.00, pct: 0.25 },
+  "264969": { ltp: 13.73, close: 13.72, chg: 0.01, pct: 0.07 },
+  "288009": { ltp: 12650.00, close: 12615.00, chg: 35.00, pct: 0.28 },
 };
 
 // ── Ticker bar ───────────────────────────────────────────────
 function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; currentIstTime?: string } | null }) {
-  const [prices, setPrices] = useState<Record<string, { ltp: number; chg: number; pct: number }>>(INITIAL_INDEX_DATA);
+  const [prices, setPrices] = useState<Record<string, { ltp: number; close: number; chg: number; pct: number }>>(INITIAL_INDEX_DATA);
 
   useEffect(() => {
     // 1. Immediately query REST quote API so accurate prices display right away
@@ -35,10 +35,10 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
             for (const q of res.data) {
               if (q && q.instrumentToken) {
                 const ltp = Number(q.lastPrice || 0);
-                const close = Number(q.close || ltp);
-                const chg = Number((ltp - close).toFixed(2));
-                const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
-                next[q.instrumentToken] = { ltp, chg, pct };
+                const close = Number((q as any).closePrice || q.close || ltp);
+                const chg = Number(((q as any).netChange ?? (ltp - close)).toFixed(2));
+                const pct = close > 0 ? Number(((q as any).changePercent ?? ((chg / close) * 100)).toFixed(2)) : 0;
+                next[q.instrumentToken] = { ltp, close, chg, pct };
               }
             }
             return next;
@@ -53,13 +53,14 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
     const onTick = (t: Tick) =>
       setPrices((p) => {
         const existing = p[t.instrumentToken];
-        const close = t.close ?? (existing ? existing.ltp - existing.chg : t.lastPrice);
+        const close = t.close ?? (t as any).closePrice ?? existing?.close ?? t.lastPrice;
         const chg = Number((t.lastPrice - close).toFixed(2));
         const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
         return {
           ...p,
           [t.instrumentToken]: {
             ltp: t.lastPrice,
+            close,
             chg,
             pct,
           },
@@ -75,12 +76,31 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
         const p = prices[idx.token] || INITIAL_INDEX_DATA[idx.token];
         const up = p ? p.chg >= 0 : true;
         return (
-          <div key={idx.token} style={{ display: "flex", alignItems: "center", gap: 28 }}>
+          <div key={idx.token} style={{ display: "flex", alignItems: "center", gap: 24 }}>
             {i > 0 && <div className="t-tick-sep" />}
-            <div className="t-tick">
+            <div className="t-tick" style={{ gap: 8 }}>
               <span className="lbl">{idx.label}</span>
-              <span className="val">{p ? p.ltp.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}</span>
-              {p && <span className={`chg ${up ? "up" : "dn"}`}>{up ? "+" : ""}{p.chg.toFixed(2)} ({up ? "+" : ""}{p.pct.toFixed(2)}%)</span>}
+              <span className="val" style={{ fontFamily: "var(--font-mono)", fontWeight: 800 }}>
+                {p ? p.ltp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+              </span>
+              {p && (
+                <span className={`chg ${up ? "up" : "dn"}`} style={{ fontFamily: "var(--font-mono)" }}>
+                  {up ? "+" : ""}{p.chg.toFixed(2)} ({up ? "+" : ""}{p.pct.toFixed(2)}%)
+                </span>
+              )}
+              {p && (
+                <span style={{
+                  fontSize: 10,
+                  color: "#94a3b8",
+                  fontFamily: "var(--font-mono)",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  padding: "1px 5px",
+                  borderRadius: 3,
+                  border: "1px solid rgba(255, 255, 255, 0.06)"
+                }}>
+                  Close: ₹{p.close.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
             </div>
           </div>
         );
@@ -416,7 +436,7 @@ export default function Terminal() {
   const [orders,    setOrders]    = useState<any[]>([]);
   const [query,     setQuery]     = useState("");
   const [results,   setResults]   = useState<Instrument[]>([]);
-  const [wPrices,   setWPrices]   = useState<Record<string,number>>({});
+  const [wPrices,   setWPrices]   = useState<Record<string, { ltp: number; close: number; chg: number; pct: number }>>({});
   const [page,          setPage]          = useState(1);
   const pageSize = 15;
   const [sidebarTab,          setSidebarTab]          = useState<"watchlist" | "positions" | "holdings" | "orders">("watchlist");
@@ -645,7 +665,18 @@ export default function Terminal() {
     setPage(1);
     const t = setTimeout(() => {
       MarketAPI.search(query, segmentFilter === "ALL" ? undefined : segmentFilter, undefined, 100)
-        .then((r) => setResults(r.data))
+        .then((r) => {
+          setResults(r.data);
+          const initial: Record<string, { ltp: number; close: number; chg: number; pct: number }> = {};
+          for (const item of r.data) {
+            const ltp = Number(item.lastPrice || 0);
+            const close = Number((item as any).closePrice || (item as any).close || ltp);
+            const chg = Number(((item as any).netChange ?? (close > 0 ? ltp - close : 0)).toFixed(2));
+            const pct = Number(((item as any).changePercent ?? (close > 0 ? (chg / close) * 100 : 0)).toFixed(2));
+            initial[item.instrumentToken] = { ltp, close, chg, pct };
+          }
+          setWPrices((prev) => ({ ...initial, ...prev }));
+        })
         .catch(() => {});
     }, 250);
     return () => clearTimeout(t);
@@ -657,7 +688,18 @@ export default function Terminal() {
     const s = getSocket();
     const tokens = results.map((r) => r.instrumentToken);
     s.emit("subscribe", tokens);
-    const onTick = (t: Tick) => setWPrices((p) => ({ ...p, [t.instrumentToken]: t.lastPrice }));
+    const onTick = (t: Tick) =>
+      setWPrices((p) => {
+        const existing = p[t.instrumentToken];
+        const ltp = t.lastPrice;
+        const close = t.close ?? (t as any).closePrice ?? existing?.close ?? ltp;
+        const chg = Number((ltp - close).toFixed(2));
+        const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
+        return {
+          ...p,
+          [t.instrumentToken]: { ltp, close, chg, pct },
+        };
+      });
     s.on("tick", onTick);
     return () => { s.off("tick", onTick); s.emit("unsubscribe", tokens); };
   }, [results]);
@@ -671,7 +713,18 @@ export default function Terminal() {
 
     const s = getSocket();
     s.emit("subscribe", allTokens);
-    const onTick = (t: Tick) => setWPrices((p) => ({ ...p, [t.instrumentToken]: t.lastPrice }));
+    const onTick = (t: Tick) =>
+      setWPrices((p) => {
+        const existing = p[t.instrumentToken];
+        const ltp = t.lastPrice;
+        const close = t.close ?? (t as any).closePrice ?? existing?.close ?? ltp;
+        const chg = Number((ltp - close).toFixed(2));
+        const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
+        return {
+          ...p,
+          [t.instrumentToken]: { ltp, close, chg, pct },
+        };
+      });
     s.on("tick", onTick);
     return () => { s.off("tick", onTick); };
   }, [positions, holdings]);
@@ -705,7 +758,7 @@ export default function Terminal() {
   }
 
   const displayLtp   = ltp ?? quote?.lastPrice ?? null;
-  const displayClose = prevClose ?? quote?.close ?? null;
+  const displayClose = prevClose ?? quote?.close ?? (instrument as any)?.closePrice ?? null;
   const chg    = displayLtp && displayClose ? displayLtp - displayClose : null;
   const chgPct = chg && displayClose ? (chg / displayClose) * 100 : null;
   const up     = chg !== null ? chg >= 0 : true;
@@ -713,7 +766,7 @@ export default function Terminal() {
   // Real-time calculation of unrealised floating P&L on all open positions
   const totalPnl = positions.reduce((s: number, p: any) => {
     if (!p.quantity || p.quantity === 0) return s;
-    const curPrice = wPrices[p.instrument?.instrumentToken] ?? p.ltp ?? Number(p.instrument?.lastPrice || p.avgPrice);
+    const curPrice = wPrices[p.instrument?.instrumentToken]?.ltp ?? p.ltp ?? Number(p.instrument?.lastPrice || p.avgPrice);
     const pnl = p.quantity * (curPrice - Number(p.avgPrice));
     return s + pnl;
   }, 0);
@@ -1068,7 +1121,13 @@ export default function Terminal() {
                             </div>
                           ) : (
                             paginatedResults.map((r) => {
-                              const p = wPrices[r.instrumentToken] ?? Number(r.lastPrice ?? 0);
+                              const pData = wPrices[r.instrumentToken];
+                              const ltp = pData?.ltp ?? Number(r.lastPrice ?? 0);
+                              const close = pData?.close ?? Number((r as any).closePrice ?? (r as any).close ?? ltp);
+                              const chg = pData?.chg ?? Number(((r as any).netChange ?? (close > 0 ? ltp - close : 0)).toFixed(2));
+                              const pct = pData?.pct ?? Number(((r as any).changePercent ?? (close > 0 ? (chg / close) * 100 : 0)).toFixed(2));
+                              const up = chg >= 0;
+
                               const sel = instrument?.id === r.id;
                               const isExpanded = expandedSymbolId === r.id;
                               const isNFO = r.exchange === "NFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
@@ -1121,12 +1180,21 @@ export default function Terminal() {
                                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                                       <div style={{
                                         fontWeight: 800, fontSize: 13, fontFamily: "var(--font-mono)",
-                                        color: p > 0 ? "#4ade80" : "var(--text-secondary)"
+                                        color: ltp > 0 ? (up ? "#4ade80" : "#f87171") : "var(--text-secondary)"
                                       }}>
-                                        {p > 0 ? `₹${p.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"}
+                                        {ltp > 0 ? `₹${ltp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                                       </div>
-                                      <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
-                                        {isExpanded ? "Click to collapse" : "Click to expand"}
+                                      <div style={{
+                                        fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700,
+                                        color: up ? "#4ade80" : "#f87171", marginTop: 1
+                                      }}>
+                                        {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
+                                      </div>
+                                      <div style={{
+                                        fontSize: 9, fontFamily: "var(--font-mono)", color: "#94a3b8",
+                                        marginTop: 2, background: "rgba(255, 255, 255, 0.05)", padding: "1px 4px", borderRadius: 3
+                                      }}>
+                                        Close: ₹{close > 0 ? close.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                                       </div>
                                     </div>
                                   </div>
@@ -1138,6 +1206,16 @@ export default function Terminal() {
                                       borderTop: "1px solid rgba(255, 255, 255, 0.05)", display: "flex",
                                       flexDirection: "column", gap: 6
                                     }}>
+                                      {/* Quick Price Summary Bar */}
+                                      <div style={{
+                                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                                        padding: "4px 8px", background: "rgba(255, 255, 255, 0.03)", borderRadius: 5,
+                                        fontSize: 10, fontFamily: "var(--font-mono)", color: "#cbd5e1"
+                                      }}>
+                                        <span>Last: <strong style={{ color: up ? "#4ade80" : "#f87171" }}>₹{ltp.toFixed(2)}</strong></span>
+                                        <span>Last Close: <strong>₹{close.toFixed(2)}</strong></span>
+                                        <span style={{ color: up ? "#4ade80" : "#f87171" }}>{up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)</span>
+                                      </div>
                                       {/* Quick Order Actions */}
                                       <div style={{ display: "flex", gap: 6 }}>
                                         <button
@@ -1272,7 +1350,9 @@ export default function Terminal() {
                     </div>
                   ) : (
                     positions.filter((p: any) => p.quantity !== 0).map((p: any, i: number) => {
-                      const curPrice = wPrices[p.instrument?.instrumentToken] ?? p.ltp ?? Number(p.instrument?.lastPrice || p.avgPrice);
+                      const pData = wPrices[p.instrument?.instrumentToken];
+                      const curPrice = pData?.ltp ?? p.ltp ?? Number(p.instrument?.lastPrice || p.avgPrice);
+                      const closePrice = pData?.close ?? Number(p.instrument?.closePrice || p.instrument?.close || curPrice);
                       const avgPrice = Number(p.avgPrice || p.averagePrice || 0);
                       const pnl = p.quantity * (curPrice - avgPrice);
                       const pnlPct = avgPrice > 0 ? ((curPrice - avgPrice) / avgPrice) * 100 * Math.sign(p.quantity) : 0;
@@ -1300,7 +1380,7 @@ export default function Terminal() {
                           </div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, paddingTop: 4, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                             <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
-                              LTP: ₹{curPrice.toFixed(2)}
+                              LTP: ₹{curPrice.toFixed(2)} · Close: ₹{closePrice.toFixed(2)}
                             </span>
                             <button
                               onClick={(e) => {
@@ -1378,7 +1458,7 @@ export default function Terminal() {
                     {holdings.length > 0 && (() => {
                       const totalInvested = holdings.reduce((s, h) => s + (Number(h.avgPrice || 0) * h.quantity), 0);
                       const totalVal = holdings.reduce((s, h) => {
-                        const cp = wPrices[h.instrument?.instrumentToken] ?? h.ltp ?? Number(h.instrument?.lastPrice || h.avgPrice || 0);
+                        const cp = wPrices[h.instrument?.instrumentToken]?.ltp ?? h.ltp ?? Number(h.instrument?.lastPrice || h.avgPrice || 0);
                         return s + (cp * h.quantity);
                       }, 0);
                       const pnl = totalVal - totalInvested;
@@ -1398,7 +1478,9 @@ export default function Terminal() {
                     </div>
                   ) : (
                     holdings.map((h: any, i: number) => {
-                      const curPrice = wPrices[h.instrument?.instrumentToken] ?? h.ltp ?? Number(h.instrument?.lastPrice || h.avgPrice || 0);
+                      const pData = wPrices[h.instrument?.instrumentToken];
+                      const curPrice = pData?.ltp ?? h.ltp ?? Number(h.instrument?.lastPrice || h.avgPrice || 0);
+                      const closePrice = pData?.close ?? Number(h.instrument?.closePrice || h.instrument?.close || curPrice);
                       const avgPrice = Number(h.avgPrice || 0);
                       const invested = avgPrice * h.quantity;
                       const currentValue = curPrice * h.quantity;
@@ -1437,7 +1519,7 @@ export default function Terminal() {
 
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                             <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                              LTP: ₹{curPrice.toFixed(2)}
+                              LTP: ₹{curPrice.toFixed(2)} · Close: ₹{closePrice.toFixed(2)}
                             </span>
                             <button
                               onClick={(e) => {
@@ -1515,17 +1597,32 @@ export default function Terminal() {
               {instrument ? (
                 <>
                   <span className="sym">{instrument.tradingSymbol}</span>
-                  <span className={`ltp ${up ? "up" : "dn"}`}>
-                    ₹{(displayLtp ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  <span className={`ltp ${up ? "up" : "dn"}`} style={{ fontFamily: "var(--font-mono)", fontWeight: 800 }}>
+                    ₹{(displayLtp ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                   {chg !== null && (
-                    <span className={`chg ${up ? "up" : "dn"}`}>
+                    <span className={`chg ${up ? "up" : "dn"}`} style={{ fontFamily: "var(--font-mono)" }}>
                       {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{chgPct?.toFixed(2)}%)
+                    </span>
+                  )}
+                  {displayClose !== null && (
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#94a3b8",
+                      marginLeft: 8,
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      fontFamily: "var(--font-mono)"
+                    }}>
+                      Last Close: ₹{Number(displayClose).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   )}
                   {quote && (
                     <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6, fontFamily: "var(--font-mono)" }}>
-                      O:{quote.open?.toFixed(2)} H:{quote.high?.toFixed(2)} L:{quote.low?.toFixed(2)} C:{quote.close?.toFixed(2)}
+                      O:{quote.open?.toFixed(2)} H:{quote.high?.toFixed(2)} L:{quote.low?.toFixed(2)}
                     </span>
                   )}
                 </>
@@ -1634,6 +1731,40 @@ export default function Terminal() {
                 {results.map((r) => <option key={r.id} value={r.id}>{r.tradingSymbol}</option>)}
               </select>
             </div>
+
+            {instrument && (
+              <div style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.07)",
+                borderRadius: 8,
+                padding: "8px 12px",
+                marginBottom: 12,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }}>
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Last Price (LTP)</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "var(--font-mono)", color: up ? "#4ade80" : "#f87171" }}>
+                    ₹{(displayLtp ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  {chg !== null && (
+                    <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700, color: up ? "#4ade80" : "#f87171" }}>
+                      {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{chgPct?.toFixed(2)}%)
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Last Close Price</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>
+                    ₹{(displayClose ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: 10, color: marketStatus?.isOpen ? "#4ade80" : "#f87171", fontWeight: 700, marginTop: 1 }}>
+                    {marketStatus?.isOpen ? "● Market Open" : "○ Market Closed"}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={placeOrder}>
               <div className="t-bs-toggle">
@@ -1919,7 +2050,8 @@ export default function Terminal() {
 
       {/* Market Depth Modal */}
       {depthItem && (() => {
-        const liveP = wPrices[depthItem.tradingSymbol] || ltp || 100;
+        const liveP = wPrices[depthItem.instrumentToken]?.ltp || Number(depthItem.lastPrice) || ltp || 100;
+        const closeP = wPrices[depthItem.instrumentToken]?.close || Number((depthItem as any).closePrice || (depthItem as any).close) || liveP;
         const depthData = generateMarketDepth(liveP);
         const totalQty = depthData.totalBidQty + depthData.totalAskQty;
         const buyPct = totalQty > 0 ? ((depthData.totalBidQty / totalQty) * 100).toFixed(1) : "50.0";
@@ -1960,8 +2092,11 @@ export default function Terminal() {
                 </div>
 
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#38bdf8", fontFamily: "var(--font-mono)" }}>
-                    ₹{liveP.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#38bdf8", fontFamily: "var(--font-mono)" }}>
+                    ₹{liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                    Last Close: ₹{closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <button
                     onClick={() => setDepthItem(null)}
@@ -2107,7 +2242,8 @@ export default function Terminal() {
 
       {/* Option Chain Modal */}
       {chainItem && (() => {
-        const liveP = wPrices[chainItem.tradingSymbol] || ltp || 24850;
+        const liveP = wPrices[chainItem.instrumentToken]?.ltp || Number(chainItem.lastPrice) || ltp || 24850;
+        const closeP = wPrices[chainItem.instrumentToken]?.close || Number((chainItem as any).closePrice || (chainItem as any).close) || liveP;
         const chain = generateOptionChain(liveP);
         const expiries = ["24-SEP-2026", "01-OCT-2026", "08-OCT-2026", "29-OCT-2026"];
 
@@ -2139,8 +2275,9 @@ export default function Terminal() {
                         {chainItem.exchange} · OPTIONS
                       </span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3, display: "flex", alignItems: "center", gap: 12 }}>
-                      <span>Spot LTP: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>₹{liveP.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong></span>
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3, display: "flex", alignItems: "center", gap: 14 }}>
+                      <span>Spot LTP: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>₹{liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                      <span>Last Close: <strong style={{ color: "#cbd5e1", fontFamily: "var(--font-mono)" }}>₹{closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
                       <span>ATM Strike: <strong style={{ color: "#fbbf24", fontFamily: "var(--font-mono)" }}>{chain.atmStrike}</strong></span>
                     </div>
                   </div>

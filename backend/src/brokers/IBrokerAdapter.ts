@@ -54,6 +54,7 @@ export interface QuoteDTO {
   high: number;
   low: number;
   close: number;
+  closePrice?: number;
   volume: number;
   buyQuantity?: number;
   sellQuantity?: number;

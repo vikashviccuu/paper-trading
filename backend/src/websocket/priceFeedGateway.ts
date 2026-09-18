@@ -34,10 +34,11 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
       instrumentToken: token,
       tradingSymbol: inst?.tradingSymbol || token,
       lastPrice: price,
+      closePrice: prevClose,
+      close: prevClose,
       open,
       high,
       low,
-      close: prevClose,
       volume: 450000 + Math.floor(Math.random() * 50000),
       netChange,
       changePercent,
@@ -56,11 +57,21 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
         if (cached) {
           socket.emit("tick", cached);
         } else {
-          // Send instant baseline quote so UI never displays "—"
-          const basePrice = getAccurateBasePrice(undefined, token);
-          const instantQuote = createQuote(token, basePrice);
-          latestQuoteCache.set(token, instantQuote);
-          socket.emit("tick", instantQuote);
+          // Look up instrument from database for accurate symbol and price
+          prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
+            const dbPrice = Number(inst?.lastPrice || 0);
+            const basePrice = dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500
+              ? dbPrice
+              : getAccurateBasePrice(inst, token);
+            const instantQuote = createQuote(token, basePrice, inst);
+            latestQuoteCache.set(token, instantQuote);
+            socket.emit("tick", instantQuote);
+          }).catch(() => {
+            const basePrice = getAccurateBasePrice(undefined, token);
+            const instantQuote = createQuote(token, basePrice);
+            latestQuoteCache.set(token, instantQuote);
+            socket.emit("tick", instantQuote);
+          });
         }
 
         if (subscribedTokens.has(token)) continue;
@@ -73,13 +84,18 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
           // First subscriber for this token -> open the broker stream
           try {
             await broker.subscribeTicks([token], (quote) => {
+              const fullQuote = {
+                ...quote,
+                close: quote.close ?? quote.closePrice ?? quote.lastPrice,
+                closePrice: quote.closePrice ?? quote.close ?? quote.lastPrice,
+              };
               lastTickTimes.set(quote.instrumentToken, Date.now());
-              latestQuoteCache.set(quote.instrumentToken, quote);
-              io.to(`tick:${quote.instrumentToken}`).emit("tick", quote);
-              orderEngine.evaluatePendingOrders(quote.instrumentToken, quote.lastPrice).catch(() => {});
+              latestQuoteCache.set(quote.instrumentToken, fullQuote);
+              io.to(`tick:${quote.instrumentToken}`).emit("tick", fullQuote);
+              orderEngine.evaluatePendingOrders(quote.instrumentToken, quote.lastPrice).catch(() => { });
               prisma.instrument
                 .updateMany({ where: { instrumentToken: quote.instrumentToken }, data: { lastPrice: quote.lastPrice } })
-                .catch(() => {});
+                .catch(() => { });
             });
           } catch (subErr: any) {
             console.warn(`[PriceFeed] Broker subscribe failed for token ${token}:`, subErr.message);
@@ -128,8 +144,8 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
 
                 io.to(`tick:${token}`).emit("tick", quote);
                 if (marketStatus.isOpen) {
-                  orderEngine.evaluatePendingOrders(token, lastPrice).catch(() => {});
-                  prisma.instrument.updateMany({ where: { instrumentToken: token }, data: { lastPrice } }).catch(() => {});
+                  orderEngine.evaluatePendingOrders(token, lastPrice).catch(() => { });
+                  prisma.instrument.updateMany({ where: { instrumentToken: token }, data: { lastPrice } }).catch(() => { });
                 }
               }
             }, 1500);
@@ -154,7 +170,7 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
             clearInterval(fallbackTimer);
             fallbackIntervals.delete(token);
           }
-          await broker.unsubscribeTicks([token]).catch(() => {});
+          await broker.unsubscribeTicks([token]).catch(() => { });
         }
       }
     });
@@ -171,7 +187,7 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
             clearInterval(fallbackTimer);
             fallbackIntervals.delete(token);
           }
-          await broker.unsubscribeTicks([token]).catch(() => {});
+          await broker.unsubscribeTicks([token]).catch(() => { });
         }
       }
     });
