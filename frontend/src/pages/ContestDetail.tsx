@@ -716,7 +716,7 @@ export default function ContestDetail() {
                         >
                           {getInitials(row.name || "Trader")}
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{row.name}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{row.name}</span>
                       </div>
                     </td>
                     <td style={{ padding: "14px 14px", textAlign: "right" }}>
@@ -724,8 +724,8 @@ export default function ContestDetail() {
                         style={{
                           fontSize: 13,
                           fontWeight: 700,
-                          color: row.returnPct >= 0 ? "#3fb950" : "#f85149",
-                          background: row.returnPct >= 0 ? "rgba(63, 185, 80, 0.1)" : "rgba(248, 81, 73, 0.1)",
+                          color: row.returnPct >= 0 ? "#16a34a" : "#dc2626",
+                          background: row.returnPct >= 0 ? "rgba(22, 163, 74, 0.1)" : "rgba(220, 38, 38, 0.1)",
                           padding: "3px 8px",
                           borderRadius: 6,
                         }}
@@ -737,16 +737,16 @@ export default function ContestDetail() {
                     <td style={{ padding: "14px 14px", textAlign: "center" }}>
                       <span
                         style={{
-                          background: "rgba(255, 255, 255, 0.05)",
+                          background: "var(--bg-elevated)",
                           border: "1px solid var(--border)",
                           padding: "2px 8px",
                           borderRadius: 6,
                           fontSize: 12,
                           fontWeight: 600,
-                          color: "var(--text-secondary)",
+                          color: "var(--text-primary)",
                         }}
                       >
-                        {row.riskScore.toFixed(2)}
+                        {row.riskScore.toFixed(2)}%
                       </span>
                     </td>
                     <td style={{ padding: "14px 14px", textAlign: "center" }}>

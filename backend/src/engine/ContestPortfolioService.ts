@@ -210,21 +210,29 @@ export class ContestPortfolioService {
     return { participant, positions, holdings };
   }
 
-  /** Cash + mark-to-market value of every open position/holding, using each instrument's cached lastPrice. */
+  /**
+   * Cash + Margin Used + Mark-To-Market Unrealised P&L of open positions/holdings.
+   * Net Asset Value (NAV) represents the true equity value of the participant:
+   * NAV = CashBalance + MarginUsed + sum(open positions unrealised PnL) + sum(holdings unrealised PnL)
+   */
   async computeNav(contestParticipantId: string): Promise<number> {
     const { participant, positions, holdings } = await this.getPortfolioSnapshot(contestParticipantId);
     if (!participant) return 0;
 
-    let mtm = 0;
+    let totalUnrealisedPnL = 0;
     for (const p of positions) {
-      const ltp = Number(p.instrument.lastPrice ?? p.avgPrice);
-      mtm += p.quantity * ltp;
+      if (p.quantity === 0 || p.isClosed) continue;
+      const avg = Number(p.avgPrice);
+      const ltp = Number(p.instrument?.lastPrice ?? avg);
+      totalUnrealisedPnL += p.quantity * (ltp - avg);
     }
     for (const h of holdings) {
-      const ltp = Number(h.instrument.lastPrice ?? h.avgPrice);
-      mtm += h.quantity * ltp;
+      if (h.quantity === 0 || h.isDeleted) continue;
+      const avg = Number(h.avgPrice);
+      const ltp = Number(h.instrument?.lastPrice ?? avg);
+      totalUnrealisedPnL += h.quantity * (ltp - avg);
     }
-    return Number(participant.cashBalance) + Number(participant.marginUsed) + mtm;
+    return Number(participant.cashBalance) + Number(participant.marginUsed) + totalUnrealisedPnL;
   }
 }
 

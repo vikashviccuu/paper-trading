@@ -1,4 +1,5 @@
 import { prisma } from "../utils/prisma";
+import { contestPortfolioService } from "./ContestPortfolioService";
 
 export interface LeaderboardRow {
   contestParticipantId: string;
@@ -13,25 +14,34 @@ export interface LeaderboardRow {
 }
 
 /**
- * Ranks contest participants on a blend of return and risk, not raw return
- * alone - two participants who both made +10% can have very different risk
- * profiles (one held steady, one YOLO'd into weekly options and got lucky),
- * and a contest that only rewards raw return encourages exactly that kind of
- * reckless trading. So:
+ * Leaderboard Ranking Engine:
+ * Ranks contest participants on a balanced blend of Return and Risk.
  *
- *   1. For each participant, build their NAV time series from
- *      ContestPortfolioSnapshot (periodic snapshots taken by
- *      ContestSnapshotScheduler).
- *   2. returnPct = total return over the contest so far.
- *      riskScore = standard deviation of period-over-period % returns
- *      (volatility) - higher means a bumpier equity curve.
- *      maxDrawdownPct = largest peak-to-trough decline, shown for context.
- *   3. Both metrics are z-score normalized *within the contest* (relative to
- *      other participants, not some absolute scale), then combined into
- *      compositeScore = contest.returnWeight * zReturn - contest.riskWeight * zRisk.
- *      Ranking is by compositeScore descending. Contest hosts control the
- *      return/risk tradeoff via Contest.returnWeight / Contest.riskWeight
- *      (e.g. a "steady hands" contest could set riskWeight much higher).
+ * Core Mathematical Formulations:
+ * 1. Current Net Asset Value (NAV):
+ *    NAV = CashBalance + MarginUsed + sum(Unrealised PnL of open positions and holdings)
+ *
+ * 2. Total Percentage Return (Return %):
+ *    Return % = ((Current NAV - StartingVirtualCash) / StartingVirtualCash) * 100
+ *
+ * 3. Risk (Volatility %):
+ *    Sample standard deviation of period-over-period percentage returns across the NAV equity curve:
+ *    R_i = ((NAV_i - NAV_{i-1}) / NAV_{i-1}) * 100
+ *    Volatility = sqrt( (1 / (K - 1)) * sum((R_i - mean(R))^2) )
+ *
+ * 4. Maximum Drawdown (MDD %):
+ *    MDD % = max_t ( (Peak_t - NAV_t) / Peak_t ) * 100
+ *
+ * 5. Composite Score (Risk-Adjusted Performance):
+ *    Composite Score = (ReturnWeight * Return %) - (RiskWeight * RiskScore)
+ *    Default weights: ReturnWeight = 0.60, RiskWeight = 0.40
+ *
+ * Deterministic Tie-Breaking Hierarchy:
+ *   1. Composite Score (descending)
+ *   2. Return % (descending)
+ *   3. Maximum Drawdown % (ascending, lower is better)
+ *   4. Risk / Volatility % (ascending, lower is better)
+ *   5. Registration joinedAt (ascending, earlier is better)
  */
 export class LeaderboardService {
   async computeLeaderboard(contestId: string): Promise<LeaderboardRow[]> {
@@ -46,33 +56,64 @@ export class LeaderboardService {
 
     const startingCash = Number(contest.startingVirtualCash);
 
-    const raw = participants.map((p) => {
-      const navSeries = p.snapshots.map((s) => Number(s.nav));
-      const series = navSeries.length > 0 ? navSeries : [startingCash];
-      const lastNav = series[series.length - 1];
+    const raw = await Promise.all(
+      participants.map(async (p) => {
+        // Fetch real-time live NAV for participant
+        let currentNav = await contestPortfolioService.computeNav(p.id).catch(() => null);
+        if (currentNav == null || isNaN(currentNav) || currentNav <= 0) {
+          currentNav = Number(p.cashBalance) + Number(p.marginUsed);
+        }
 
-      const returnPct = ((lastNav - startingCash) / startingCash) * 100;
-      const riskScore = volatilityPct(series);
-      const maxDrawdownPct = maxDrawdown(series) * 100;
+        const snapshotNavs = p.snapshots.map((s) => Number(s.nav));
+        const series: number[] = [startingCash, ...snapshotNavs];
+        
+        // Append current live NAV if it's new or not yet captured in snapshots
+        if (snapshotNavs.length === 0 || Math.abs(snapshotNavs[snapshotNavs.length - 1] - currentNav) > 0.01) {
+          series.push(currentNav);
+        }
 
-      return { participant: p, nav: lastNav, returnPct, riskScore, maxDrawdownPct };
+        const returnPct = ((currentNav - startingCash) / startingCash) * 100;
+        const riskScore = volatilityPct(series);
+        const maxDrawdownPct = maxDrawdown(series) * 100;
+
+        const returnWeight = Number(contest.returnWeight ?? 0.6);
+        const riskWeight = Number(contest.riskWeight ?? 0.4);
+        const compositeScore = returnWeight * returnPct - riskWeight * riskScore;
+
+        return {
+          participant: p,
+          nav: currentNav,
+          returnPct,
+          riskScore,
+          maxDrawdownPct,
+          compositeScore,
+        };
+      })
+    );
+
+    // Multi-tiered ranking sort:
+    raw.sort((a, b) => {
+      // 1. Composite Score (descending)
+      if (Math.abs(b.compositeScore - a.compositeScore) > 0.0001) {
+        return b.compositeScore - a.compositeScore;
+      }
+      // 2. Return % (descending)
+      if (Math.abs(b.returnPct - a.returnPct) > 0.0001) {
+        return b.returnPct - a.returnPct;
+      }
+      // 3. Max Drawdown % (ascending - lower drawdown is better)
+      if (Math.abs(a.maxDrawdownPct - b.maxDrawdownPct) > 0.0001) {
+        return a.maxDrawdownPct - b.maxDrawdownPct;
+      }
+      // 4. Risk / Volatility % (ascending - lower volatility is better)
+      if (Math.abs(a.riskScore - b.riskScore) > 0.0001) {
+        return a.riskScore - b.riskScore;
+      }
+      // 5. Earlier participant joinedAt breaks tie
+      return new Date(a.participant.joinedAt).getTime() - new Date(b.participant.joinedAt).getTime();
     });
 
-    const returnMean = mean(raw.map((r) => r.returnPct));
-    const returnStd = stddev(raw.map((r) => r.returnPct)) || 1;
-    const riskMean = mean(raw.map((r) => r.riskScore));
-    const riskStd = stddev(raw.map((r) => r.riskScore)) || 1;
-
-    const scored = raw.map((r) => {
-      const zReturn = (r.returnPct - returnMean) / returnStd;
-      const zRisk = (r.riskScore - riskMean) / riskStd;
-      const compositeScore = contest.returnWeight * zReturn - contest.riskWeight * zRisk;
-      return { ...r, compositeScore };
-    });
-
-    scored.sort((a, b) => b.compositeScore - a.compositeScore);
-
-    const rows: LeaderboardRow[] = scored.map((r, idx) => ({
+    const rows: LeaderboardRow[] = raw.map((r, idx) => ({
       contestParticipantId: r.participant.id,
       userId: r.participant.userId,
       name: r.participant.user.name,
@@ -80,27 +121,29 @@ export class LeaderboardService {
       returnPct: round2(r.returnPct),
       riskScore: round2(r.riskScore),
       maxDrawdownPct: round2(r.maxDrawdownPct),
-      compositeScore: round2(r.compositeScore),
+      compositeScore: round3(r.compositeScore),
       rank: idx + 1,
     }));
 
     // Persist so the leaderboard endpoint can serve cached results between
     // snapshot cycles without recomputing (see routes/contests.routes.ts).
-    await prisma.$transaction(
-      rows.map((row) =>
-        prisma.contestParticipant.update({
-          where: { id: row.contestParticipantId },
-          data: {
-            rank: row.rank,
-            returnPct: row.returnPct,
-            riskScore: row.riskScore,
-            maxDrawdownPct: row.maxDrawdownPct,
-            compositeScore: row.compositeScore,
-            lastScoredAt: new Date(),
-          },
-        })
-      )
-    );
+    if (rows.length > 0) {
+      await prisma.$transaction(
+        rows.map((row) =>
+          prisma.contestParticipant.update({
+            where: { id: row.contestParticipantId },
+            data: {
+              rank: row.rank,
+              returnPct: row.returnPct,
+              riskScore: row.riskScore,
+              maxDrawdownPct: row.maxDrawdownPct,
+              compositeScore: row.compositeScore,
+              lastScoredAt: new Date(),
+            },
+          })
+        )
+      );
+    }
 
     return rows;
   }
@@ -119,19 +162,20 @@ function stddev(values: number[]): number {
 }
 
 /** Standard deviation of period-over-period % returns across a NAV series. */
-function volatilityPct(navSeries: number[]): number {
+export function volatilityPct(navSeries: number[]): number {
   if (navSeries.length < 2) return 0;
   const returns: number[] = [];
   for (let i = 1; i < navSeries.length; i++) {
     const prev = navSeries[i - 1];
-    if (prev === 0) continue;
+    if (prev <= 0) continue;
     returns.push(((navSeries[i] - prev) / prev) * 100);
   }
   return stddev(returns);
 }
 
 /** Largest peak-to-trough decline as a fraction (0.15 = 15% drawdown). */
-function maxDrawdown(navSeries: number[]): number {
+export function maxDrawdown(navSeries: number[]): number {
+  if (navSeries.length === 0) return 0;
   let peak = navSeries[0];
   let worst = 0;
   for (const nav of navSeries) {
@@ -142,8 +186,12 @@ function maxDrawdown(navSeries: number[]): number {
   return worst;
 }
 
-function round2(n: number): number {
+export function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+export function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
 }
 
 export const leaderboardService = new LeaderboardService();

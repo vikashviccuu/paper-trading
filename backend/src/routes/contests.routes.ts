@@ -85,22 +85,30 @@ contestsRouter.get("/:id/leaderboard", async (req, res) => {
   const contest = await prisma.contest.findUnique({ where: { id: req.params.id } });
   if (!contest) return res.status(404).json({ error: "Contest not found" });
 
-  if (req.query.recompute === "true") {
-    const rows = await leaderboardService.computeLeaderboard(contest.id);
-    return res.json(rows);
-  }
-
   const participants = await prisma.contestParticipant.findMany({
     where: { contestId: contest.id },
     include: { user: true },
     orderBy: [{ rank: "asc" }, { joinedAt: "asc" }],
   });
 
+  // Recompute if explicitly requested or if participants are missing ranks/scores
+  const needsRecompute =
+    req.query.recompute === "true" ||
+    participants.some((p) => p.rank == null || p.lastScoredAt == null);
+
+  if (needsRecompute && participants.length > 0) {
+    const rows = await leaderboardService.computeLeaderboard(contest.id);
+    return res.json(rows);
+  }
+
+  const startingCash = Number(contest.startingVirtualCash);
+
   res.json(
     participants.map((p) => ({
       contestParticipantId: p.id,
       userId: p.userId,
       name: p.user.name,
+      nav: Math.round((startingCash * (1 + (p.returnPct ?? 0) / 100)) * 100) / 100,
       returnPct: p.returnPct ?? 0,
       riskScore: p.riskScore ?? 0,
       maxDrawdownPct: p.maxDrawdownPct ?? 0,

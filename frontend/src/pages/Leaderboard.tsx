@@ -44,6 +44,9 @@ export default function Leaderboard() {
 
   useEffect(() => load(), [id]);
 
+  const returnWeightPct = Math.round((contest?.returnWeight ?? 0.6) * 100);
+  const riskWeightPct = Math.round((contest?.riskWeight ?? 0.4) * 100);
+
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 48px" }}>
       {/* Top Banner Card */}
@@ -67,7 +70,7 @@ export default function Leaderboard() {
               gap: 6,
               fontSize: 13,
               fontWeight: 600,
-              color: "#60a5fa",
+              color: "#3b82f6",
               textDecoration: "none",
             }}
           >
@@ -77,15 +80,13 @@ export default function Leaderboard() {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>
+            <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.5px" }}>
               {contest?.name ?? "Full Leaderboard"}
             </h1>
-            {contest && (
-              <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4, maxWidth: 700, lineHeight: 1.5 }}>
-                Ranked by Composite Score = {Math.round(contest.returnWeight * 100)}% × Normalized Return −{" "}
-                {Math.round(contest.riskWeight * 100)}% × Normalized Risk. Higher return and lower drawdown push rank up.
-              </p>
-            )}
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4, maxWidth: 740, lineHeight: 1.5 }}>
+              Ranked by <strong>Composite Score</strong> = ({returnWeightPct}% × Return %) − ({riskWeightPct}% × Risk Volatility %).
+              Traders with consistent positive returns and controlled drawdown rank highest.
+            </p>
           </div>
 
           <button
@@ -94,9 +95,9 @@ export default function Leaderboard() {
             style={{
               padding: "10px 18px",
               borderRadius: 10,
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              background: "rgba(255, 255, 255, 0.08)",
-              color: "#fff",
+              border: "1px solid var(--border)",
+              background: "var(--bg-elevated)",
+              color: "var(--text-primary)",
               fontWeight: 700,
               fontSize: 13,
               cursor: loading ? "not-allowed" : "pointer",
@@ -104,6 +105,7 @@ export default function Leaderboard() {
               alignItems: "center",
               gap: 8,
               transition: "all 0.15s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
             }}
           >
             <svg
@@ -133,13 +135,14 @@ export default function Leaderboard() {
           border: "1px solid var(--border)",
           borderRadius: 16,
           padding: 24,
+          marginBottom: 24,
           boxShadow: "var(--card-shadow)",
         }}
       >
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.1)" }}>
+              <tr style={{ borderBottom: "1px solid var(--border)" }}>
                 <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", width: 70 }}>
                   Rank
                 </th>
@@ -153,7 +156,7 @@ export default function Leaderboard() {
                   Return %
                 </th>
                 <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
-                  Risk (Vol %)
+                  Risk (Volatility)
                 </th>
                 <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
                   Max Drawdown %
@@ -195,12 +198,12 @@ export default function Leaderboard() {
                   <tr
                     key={row.contestParticipantId}
                     style={{
-                      borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
-                      background: isMe ? "rgba(37, 99, 235, 0.12)" : "transparent",
+                      borderBottom: "1px solid var(--border)",
+                      background: isMe ? "rgba(59, 130, 246, 0.1)" : "transparent",
                       transition: "background 0.15s",
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = isMe ? "rgba(37, 99, 235, 0.2)" : "rgba(255, 255, 255, 0.03)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = isMe ? "rgba(37, 99, 235, 0.12)" : "transparent")}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = isMe ? "rgba(59, 130, 246, 0.16)" : "var(--bg-elevated)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = isMe ? "rgba(59, 130, 246, 0.1)" : "transparent")}
                   >
                     <td style={{ padding: "14px 14px", textAlign: "center" }}>{rankDisplay}</td>
                     <td style={{ padding: "14px 14px" }}>
@@ -223,29 +226,30 @@ export default function Leaderboard() {
                           {getInitials(row.name || "Trader")}
                         </div>
                         <div>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
                             {row.name}
                           </span>
                           {isMe && (
-                            <span style={{ marginLeft: 8, background: "rgba(96, 165, 250, 0.2)", color: "#60a5fa", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                            <span style={{ marginLeft: 8, background: "rgba(59, 130, 246, 0.15)", color: "#3b82f6", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
                               YOU
                             </span>
                           )}
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: "14px 14px", textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>
-                      {row.nav != null ? `₹${row.nav.toLocaleString("en-IN")}` : "-"}
+                    <td style={{ padding: "14px 14px", textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                      {row.nav != null ? `₹${Number(row.nav).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "-"}
                     </td>
                     <td style={{ padding: "14px 14px", textAlign: "right" }}>
                       <span
                         style={{
                           fontSize: 13,
                           fontWeight: 700,
-                          color: row.returnPct >= 0 ? "#3fb950" : "#f85149",
-                          background: row.returnPct >= 0 ? "rgba(63, 185, 80, 0.1)" : "rgba(248, 81, 73, 0.1)",
+                          color: row.returnPct >= 0 ? "#16a34a" : "#dc2626",
+                          background: row.returnPct >= 0 ? "rgba(22, 163, 74, 0.1)" : "rgba(220, 38, 38, 0.1)",
                           padding: "3px 8px",
                           borderRadius: 6,
+                          display: "inline-block",
                         }}
                       >
                         {row.returnPct >= 0 ? "+" : ""}
@@ -253,17 +257,17 @@ export default function Leaderboard() {
                       </span>
                     </td>
                     <td style={{ padding: "14px 14px", textAlign: "center" }}>
-                      <span style={{ background: "rgba(255, 255, 255, 0.05)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
+                      <span style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
                         {row.riskScore.toFixed(2)}%
                       </span>
                     </td>
                     <td style={{ padding: "14px 14px", textAlign: "center" }}>
-                      <span style={{ background: "rgba(248, 81, 73, 0.1)", color: "#f85149", padding: "2px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                      <span style={{ background: "rgba(239, 68, 68, 0.08)", color: "#ef4444", padding: "2px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
                         {row.maxDrawdownPct.toFixed(2)}%
                       </span>
                     </td>
                     <td style={{ padding: "14px 14px", textAlign: "center" }}>
-                      <span style={{ background: "rgba(96, 165, 250, 0.15)", border: "1px solid rgba(96, 165, 250, 0.3)", color: "#60a5fa", padding: "2px 8px", borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                      <span style={{ background: "rgba(59, 130, 246, 0.12)", border: "1px solid rgba(59, 130, 246, 0.25)", color: "#2563eb", padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 800 }}>
                         {row.compositeScore.toFixed(3)}
                       </span>
                     </td>
@@ -282,7 +286,45 @@ export default function Leaderboard() {
           </table>
         </div>
       </div>
+
+      {/* Formula Explanatory Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+            📈 Return % Formula
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+            ((Current NAV − Starting Cash) ÷ Starting Cash) × 100
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>
+            Measures the percentage gain or loss on your total starting virtual capital, including realized trades and live open position mark-to-market.
+          </div>
+        </div>
+
+        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+            ⚡ Risk (Volatility) Formula
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+            Sample StdDev of Periodic Return Series (σ)
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>
+            Evaluates the volatility of your portfolio equity curve over time. Smooth, consistent portfolio growth yields low risk; erratic swings increase risk.
+          </div>
+        </div>
+
+        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+            🏆 Composite Score Formula
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+            ({returnWeightPct}% × Return %) − ({riskWeightPct}% × Risk %)
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>
+            The primary contest ranking metric. Rewards profitable traders while penalizing reckless, high-volatility gambling to ensure fair, professional competition.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
-
