@@ -1,22 +1,23 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Contest, ContestsAPI, LeaderboardRow, PrizePoolInfo, MyPrizeAward } from "../services/api";
+import { useAuth } from "../store/AuthContext";
 
 const PRIZE_STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string }> = {
   PENDING_KYC: { label: "Waiting on KYC Verification", color: "#d29922", bg: "rgba(210, 153, 34, 0.15)", border: "rgba(210, 153, 34, 0.3)" },
   PENDING_BANK: { label: "Waiting on Bank Verification", color: "#d29922", bg: "rgba(210, 153, 34, 0.15)", border: "rgba(210, 153, 34, 0.3)" },
   READY: { label: "Ready to Release", color: "#60a5fa", bg: "rgba(96, 165, 250, 0.15)", border: "rgba(96, 165, 250, 0.3)" },
   PROCESSING: { label: "Payout in Progress", color: "#c084fc", bg: "rgba(168, 85, 247, 0.15)", border: "rgba(168, 85, 247, 0.3)" },
-  PAID: { label: "Paid Out to Bank", color: "#3fb950", bg: "rgba(63, 185, 80, 0.15)", border: "rgba(63, 185, 80, 0.3)" },
-  CREDITED_TO_WALLET: { label: "Credited to Wallet", color: "#3fb950", bg: "rgba(63, 185, 80, 0.15)", border: "rgba(63, 185, 80, 0.3)" },
-  FAILED: { label: "Payout Failed - Contact Support", color: "#f85149", bg: "rgba(248, 81, 73, 0.15)", border: "rgba(248, 81, 73, 0.3)" },
+  PAID: { label: "Paid Out to Bank", color: "#16a34a", bg: "rgba(22, 163, 74, 0.15)", border: "rgba(22, 163, 74, 0.3)" },
+  CREDITED_TO_WALLET: { label: "Credited to Wallet", color: "#16a34a", bg: "rgba(22, 163, 74, 0.15)", border: "rgba(22, 163, 74, 0.3)" },
+  FAILED: { label: "Payout Failed - Contact Support", color: "#ef4444", bg: "rgba(239, 68, 68, 0.15)", border: "rgba(239, 68, 68, 0.3)" },
 };
 
 const CONTEST_STATUS_BADGE: Record<string, { label: string; bg: string; border: string; color: string }> = {
-  ACTIVE: { label: "ACTIVE", bg: "rgba(63, 185, 80, 0.15)", border: "rgba(63, 185, 80, 0.35)", color: "#3fb950" },
-  UPCOMING: { label: "UPCOMING", bg: "rgba(96, 165, 250, 0.15)", border: "rgba(96, 165, 250, 0.35)", color: "#60a5fa" },
-  ENDED: { label: "ENDED", bg: "rgba(168, 85, 247, 0.15)", border: "rgba(168, 85, 247, 0.35)", color: "#c084fc" },
-  CANCELLED: { label: "CANCELLED", bg: "rgba(248, 81, 73, 0.15)", border: "rgba(248, 81, 73, 0.35)", color: "#f85149" },
+  ACTIVE: { label: "ACTIVE", bg: "rgba(22, 163, 74, 0.15)", border: "rgba(22, 163, 74, 0.35)", color: "#16a34a" },
+  UPCOMING: { label: "UPCOMING", bg: "rgba(59, 130, 246, 0.15)", border: "rgba(59, 130, 246, 0.35)", color: "#3b82f6" },
+  ENDED: { label: "ENDED", bg: "rgba(168, 85, 247, 0.15)", border: "rgba(168, 85, 247, 0.35)", color: "#a855f7" },
+  CANCELLED: { label: "CANCELLED", bg: "rgba(239, 68, 68, 0.15)", border: "rgba(239, 68, 68, 0.35)", color: "#ef4444" },
 };
 
 function getAvatarBg(name: string) {
@@ -42,6 +43,7 @@ function getInitials(name: string) {
 
 export default function ContestDetail() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [contest, setContest] = useState<Contest | null>(null);
   const [joined, setJoined] = useState(false);
   const [me, setMe] = useState<any>(null);
@@ -92,29 +94,18 @@ export default function ContestDetail() {
 
   if (loading) {
     return (
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px", textAlign: "center" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 20px" }}>
         <div
           style={{
             background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
             border: "1px solid var(--border)",
             borderRadius: 16,
-            padding: "48px 24px",
+            padding: 32,
+            textAlign: "center",
             color: "var(--text-secondary)",
-            fontSize: 14,
           }}
         >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              border: "3px solid rgba(255,255,255,0.1)",
-              borderTopColor: "var(--accent)",
-              borderRadius: "50%",
-              margin: "0 auto 16px",
-              animation: "spin 0.8s linear infinite",
-            }}
-          />
           Loading contest details...
         </div>
       </div>
@@ -123,18 +114,18 @@ export default function ContestDetail() {
 
   if (!contest) {
     return (
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 20px" }}>
         <div
           style={{
             background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(248, 81, 73, 0.3)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
             borderRadius: 16,
             padding: 32,
             textAlign: "center",
           }}
         >
-          <h3 style={{ color: "#f85149", marginBottom: 12 }}>Contest Not Found</h3>
+          <h3 style={{ color: "#ef4444", marginBottom: 12 }}>Contest Not Found</h3>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>
             The requested contest does not exist or may have been removed.
           </p>
@@ -143,8 +134,9 @@ export default function ContestDetail() {
             style={{
               padding: "10px 20px",
               borderRadius: 8,
-              background: "rgba(255, 255, 255, 0.08)",
-              color: "#fff",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
+              color: "var(--text-primary)",
               textDecoration: "none",
               fontSize: 13,
               fontWeight: 600,
@@ -161,12 +153,13 @@ export default function ContestDetail() {
     label: contest.status,
     bg: "rgba(255,255,255,0.1)",
     border: "rgba(255,255,255,0.2)",
-    color: "#fff",
+    color: "var(--text-primary)",
   };
 
   const participantCount = contest._count?.participants ?? 0;
   const isFull = contest.maxParticipants ? participantCount >= contest.maxParticipants : false;
   const pctCapacity = contest.maxParticipants ? Math.round((participantCount / contest.maxParticipants) * 100) : 0;
+  const startingCash = Number(contest.startingVirtualCash || 100000);
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 48px" }}>
@@ -179,7 +172,7 @@ export default function ContestDetail() {
             gap: 6,
             fontSize: 13,
             fontWeight: 600,
-            color: "#60a5fa",
+            color: "#3b82f6",
             textDecoration: "none",
           }}
         >
@@ -191,6 +184,7 @@ export default function ContestDetail() {
         </Link>
       </div>
 
+      {/* Main Banner */}
       <div
         style={{
           background: "var(--bg-surface)",
@@ -205,7 +199,7 @@ export default function ContestDetail() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-              <h1 style={{ fontSize: 24, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.5px" }}>
                 {contest.name}
               </h1>
               <span
@@ -225,7 +219,7 @@ export default function ContestDetail() {
               {contest.durationType && (
                 <span
                   style={{
-                    background: "rgba(255, 255, 255, 0.05)",
+                    background: "var(--bg-elevated)",
                     border: "1px solid var(--border)",
                     color: "var(--text-secondary)",
                     padding: "4px 12px",
@@ -256,7 +250,7 @@ export default function ContestDetail() {
                   borderRadius: 10,
                   border: "none",
                   background: isFull || contest.status === "ENDED" || contest.status === "CANCELLED"
-                    ? "rgba(255, 255, 255, 0.1)"
+                    ? "var(--bg-elevated)"
                     : "linear-gradient(135deg, #2563eb, #7c3aed)",
                   color: "#fff",
                   fontWeight: 700,
@@ -272,9 +266,9 @@ export default function ContestDetail() {
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <span
                   style={{
-                    background: "rgba(63, 185, 80, 0.15)",
-                    border: "1px solid rgba(63, 185, 80, 0.35)",
-                    color: "#3fb950",
+                    background: "rgba(22, 163, 74, 0.15)",
+                    border: "1px solid rgba(22, 163, 74, 0.35)",
+                    color: "#16a34a",
                     padding: "6px 14px",
                     borderRadius: 99,
                     fontSize: 13,
@@ -313,9 +307,9 @@ export default function ContestDetail() {
               marginTop: 16,
               padding: "10px 14px",
               borderRadius: 8,
-              background: "rgba(248, 81, 73, 0.15)",
-              border: "1px solid rgba(248, 81, 73, 0.35)",
-              color: "#f85149",
+              background: "rgba(239, 68, 68, 0.12)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              color: "#ef4444",
               fontSize: 13,
               fontWeight: 600,
             }}
@@ -325,6 +319,7 @@ export default function ContestDetail() {
         )}
       </div>
 
+      {/* Contest Highlights Cards */}
       <div
         style={{
           display: "grid",
@@ -340,12 +335,13 @@ export default function ContestDetail() {
             border: "1px solid var(--border)",
             borderRadius: 14,
             padding: "18px 20px",
+            boxShadow: "var(--card-shadow)",
           }}
         >
           <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, marginBottom: 6 }}>
             STARTING VIRTUAL CASH
           </div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#3fb950" }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#16a34a" }}>
             ₹{Number(contest.startingVirtualCash).toLocaleString("en-IN")}
           </div>
         </div>
@@ -357,18 +353,19 @@ export default function ContestDetail() {
             border: "1px solid var(--border)",
             borderRadius: 14,
             padding: "18px 20px",
+            boxShadow: "var(--card-shadow)",
           }}
         >
           <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, marginBottom: 6 }}>
             PARTICIPANTS
           </div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#60a5fa", marginBottom: 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#3b82f6", marginBottom: 4 }}>
             {participantCount}
             {contest.maxParticipants ? ` / ${contest.maxParticipants}` : ""}
           </div>
           {contest.maxParticipants && (
-            <div style={{ width: "100%", height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
-              <div style={{ width: `${Math.min(100, pctCapacity)}%`, height: "100%", background: "#60a5fa" }} />
+            <div style={{ width: "100%", height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${Math.min(100, pctCapacity)}%`, height: "100%", background: "#3b82f6" }} />
             </div>
           )}
         </div>
@@ -380,14 +377,15 @@ export default function ContestDetail() {
             border: "1px solid var(--border)",
             borderRadius: 14,
             padding: "18px 20px",
+            boxShadow: "var(--card-shadow)",
           }}
         >
           <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, marginBottom: 6 }}>
             RANKING FORMULA WEIGHTS
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>
-            Return: <span style={{ color: "#3fb950" }}>{Math.round(contest.returnWeight * 100)}%</span> | Risk:{" "}
-            <span style={{ color: "#c084fc" }}>{Math.round(contest.riskWeight * 100)}%</span>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+            Return: <span style={{ color: "#16a34a" }}>{Math.round(contest.returnWeight * 100)}%</span> | Risk:{" "}
+            <span style={{ color: "#9333ea" }}>{Math.round(contest.riskWeight * 100)}%</span>
           </div>
         </div>
 
@@ -398,132 +396,20 @@ export default function ContestDetail() {
             border: "1px solid var(--border)",
             borderRadius: 14,
             padding: "18px 20px",
+            boxShadow: "var(--card-shadow)",
           }}
         >
           <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, marginBottom: 6 }}>
             COMPETITION DATES
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
             {new Date(contest.startDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} -{" "}
             {new Date(contest.endDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
           </div>
         </div>
       </div>
 
-      {myPrize && (
-        <div
-          style={{
-            background: "linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(180, 83, 9, 0.15))",
-            backdropFilter: "blur(16px)",
-            border: "1px solid rgba(245, 158, 11, 0.4)",
-            borderRadius: 16,
-            padding: 24,
-            marginBottom: 24,
-            boxShadow: "0 10px 30px rgba(245, 158, 11, 0.15)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-            <span style={{ fontSize: 24 }}>🏆</span>
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: "#fbbf24", letterSpacing: "-0.3px" }}>
-              Congratulations! You won a prize
-            </h3>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16, marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>FINAL RANK</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>#{myPrize.rank}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>GROSS AWARD</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>₹{Number(myPrize.grossAmount).toLocaleString("en-IN")}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>TDS ({myPrize.tdsRatePct}%)</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#f85149" }}>₹{Number(myPrize.tdsAmount).toLocaleString("en-IN")}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>NET PAYABLE</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#3fb950" }}>₹{Number(myPrize.netAmount).toLocaleString("en-IN")}</div>
-            </div>
-          </div>
-
-          {(() => {
-            const st = PRIZE_STATUS_LABEL[myPrize.payoutStatus] ?? {
-              label: myPrize.payoutStatus,
-              color: "#fff",
-              bg: "rgba(255,255,255,0.1)",
-              border: "rgba(255,255,255,0.2)",
-            };
-            return (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                <span style={{ color: "rgba(255,255,255,0.8)" }}>Payout Status:</span>
-                <span
-                  style={{
-                    background: st.bg,
-                    border: `1px solid ${st.border}`,
-                    color: st.color,
-                    padding: "3px 10px",
-                    borderRadius: 6,
-                    fontWeight: 700,
-                    fontSize: 12,
-                  }}
-                >
-                  {st.label}
-                </span>
-                {myPrize.blockedReason && <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>— {myPrize.blockedReason}</span>}
-              </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {joined && me?.participant && (
-        <div
-          style={{
-            background: "var(--bg-surface)",
-            backdropFilter: "blur(16px)",
-            border: "1px solid var(--border)",
-            borderRadius: 16,
-            padding: 24,
-            marginBottom: 24,
-            boxShadow: "var(--card-shadow)",
-          }}
-        >
-          <h3 style={{ fontSize: 16, fontWeight: 800, color: "#fff", marginBottom: 16 }}>
-            Your Contest Portfolio Performance
-          </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-            <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: 16, borderRadius: 12, border: "1px solid rgba(255, 255, 255, 0.06)" }}>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, marginBottom: 4 }}>CASH BALANCE</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>
-                ₹{Number(me.participant.cashBalance).toLocaleString("en-IN")}
-              </div>
-            </div>
-
-            <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: 16, borderRadius: 12, border: "1px solid rgba(255, 255, 255, 0.06)" }}>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, marginBottom: 4 }}>REALIZED P&amp;L</div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: Number(me.participant.realizedPnL) >= 0 ? "#3fb950" : "#f85149",
-                }}
-              >
-                {Number(me.participant.realizedPnL) >= 0 ? "+" : ""}₹{Number(me.participant.realizedPnL).toLocaleString("en-IN")}
-              </div>
-            </div>
-
-            <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: 16, borderRadius: 12, border: "1px solid rgba(255, 255, 255, 0.06)" }}>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, marginBottom: 4 }}>CURRENT RANK</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#60a5fa" }}>
-                {me.participant.rank ? `#${me.participant.rank}` : "Pending Snapshot"}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Prize Pool Slab */}
       {prizePool && Number(prizePool.totalPrizePool) > 0 && (
         <div
           style={{
@@ -537,7 +423,7 @@ export default function ContestDetail() {
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 8 }}>
               <span>🏆</span> Prize Pool: ₹{Number(prizePool.totalPrizePool).toLocaleString("en-IN")}
             </h3>
           </div>
@@ -545,7 +431,7 @@ export default function ContestDetail() {
           <div style={{ overflowX: "auto", marginBottom: 16 }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.1)" }}>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
                   <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
                     Rank Slabs
                   </th>
@@ -562,14 +448,14 @@ export default function ContestDetail() {
                   const winners = Math.max(1, s.rankTo - s.rankFrom + 1);
                   const rewardPerWinner = (Number(prizePool.totalPrizePool) * (s.percentage / 100)) / winners;
                   return (
-                    <tr key={idx} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)" }}>
-                      <td style={{ padding: "12px 12px", fontWeight: 700, color: "#fff" }}>
+                    <tr key={idx} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "12px 12px", fontWeight: 700, color: "var(--text-primary)" }}>
                         {s.rankFrom === s.rankTo ? `#${s.rankFrom}` : `#${s.rankFrom} - #${s.rankTo}`}
                       </td>
-                      <td style={{ padding: "12px 12px", textAlign: "right", fontWeight: 700, color: "#60a5fa" }}>
+                      <td style={{ padding: "12px 12px", textAlign: "right", fontWeight: 700, color: "#3b82f6" }}>
                         {s.percentage}%
                       </td>
-                      <td style={{ padding: "12px 12px", textAlign: "right", fontWeight: 700, color: "#3fb950" }}>
+                      <td style={{ padding: "12px 12px", textAlign: "right", fontWeight: 700, color: "#16a34a" }}>
                         ₹{rewardPerWinner.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                       </td>
                     </tr>
@@ -585,6 +471,119 @@ export default function ContestDetail() {
         </div>
       )}
 
+      {/* User's Own Performance Card */}
+      {joined && me?.participant && (
+        <div
+          style={{
+            background: "var(--bg-surface)",
+            backdropFilter: "blur(16px)",
+            border: "1px solid var(--border)",
+            borderRadius: 16,
+            padding: 24,
+            marginBottom: 24,
+            boxShadow: "var(--card-shadow)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>
+              Your Contest Portfolio Performance
+            </h3>
+            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+              Contest ID: {contest.id.slice(0, 8)}...
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 14 }}>
+            {/* Rank Card */}
+            <div style={{ background: "var(--bg-elevated)", padding: 16, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
+                CURRENT RANK
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#3b82f6" }}>
+                {me.participant.rank ? (
+                  me.participant.rank === 1 ? "🥇 #1" :
+                  me.participant.rank === 2 ? "🥈 #2" :
+                  me.participant.rank === 3 ? "🥉 #3" : `#${me.participant.rank}`
+                ) : "Pending Calculation"}
+              </div>
+            </div>
+
+            {/* Cash Balance */}
+            <div style={{ background: "var(--bg-elevated)", padding: 16, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
+                CASH BALANCE
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
+                ₹{Number(me.participant.cashBalance).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </div>
+            </div>
+
+            {/* Realized P&L */}
+            <div style={{ background: "var(--bg-elevated)", padding: 16, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
+                REALIZED P&amp;L
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: Number(me.participant.realizedPnL) >= 0 ? "#16a34a" : "#dc2626",
+                }}
+              >
+                {Number(me.participant.realizedPnL) >= 0 ? "+" : ""}₹{Number(me.participant.realizedPnL).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </div>
+            </div>
+
+            {/* Return % */}
+            <div style={{ background: "var(--bg-elevated)", padding: 16, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
+                RETURN %
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: Number(me.participant.returnPct ?? 0) >= 0 ? "#16a34a" : "#dc2626",
+                }}
+              >
+                {Number(me.participant.returnPct ?? 0) >= 0 ? "+" : ""}{Number(me.participant.returnPct ?? 0).toFixed(2)}%
+              </div>
+            </div>
+
+            {/* Max Drawdown % */}
+            <div style={{ background: "var(--bg-elevated)", padding: 16, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
+                MAX DRAWDOWN %
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#ef4444" }}>
+                {Number(me.participant.maxDrawdownPct ?? 0).toFixed(2)}%
+              </div>
+            </div>
+
+            {/* Risk Volatility */}
+            <div style={{ background: "var(--bg-elevated)", padding: 16, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
+                RISK (VOLATILITY)
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
+                {Number(me.participant.riskScore ?? 0).toFixed(2)}%
+              </div>
+            </div>
+
+            {/* Composite Score */}
+            <div style={{ background: "var(--bg-elevated)", padding: 16, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
+                COMPOSITE SCORE
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#2563eb" }}>
+                {Number(me.participant.compositeScore ?? 0).toFixed(3)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leaderboard (Top 5) Table */}
       <div
         style={{
           background: "var(--bg-surface)",
@@ -595,8 +594,8 @@ export default function ContestDetail() {
           boxShadow: "var(--card-shadow)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 8 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.3px" }}>
             Leaderboard (Top 5)
           </h3>
           <Link
@@ -604,7 +603,7 @@ export default function ContestDetail() {
             style={{
               fontSize: 13,
               fontWeight: 700,
-              color: "#60a5fa",
+              color: "#3b82f6",
               textDecoration: "none",
               display: "inline-flex",
               alignItems: "center",
@@ -618,7 +617,7 @@ export default function ContestDetail() {
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.1)" }}>
+              <tr style={{ borderBottom: "1px solid var(--border)" }}>
                 <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", width: 70 }}>
                   Rank
                 </th>
@@ -626,10 +625,16 @@ export default function ContestDetail() {
                   Trader
                 </th>
                 <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
+                  NAV
+                </th>
+                <th style={{ padding: "12px 14px", textAlign: "right", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
                   Return %
                 </th>
                 <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
                   Risk (Volatility)
+                </th>
+                <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
+                  Max Drawdown %
                 </th>
                 <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
                   Composite Score
@@ -639,6 +644,8 @@ export default function ContestDetail() {
             <tbody>
               {leaderboard.map((row) => {
                 const r = row.rank;
+                const isMe = row.userId === user?.id;
+
                 let rankDisplay: React.ReactNode = r ?? "-";
                 if (r === 1) {
                   rankDisplay = (
@@ -689,12 +696,18 @@ export default function ContestDetail() {
                   rankDisplay = <span style={{ fontWeight: 700, color: "var(--text-secondary)" }}>#{r}</span>;
                 }
 
+                const navVal = row.nav ?? (startingCash * (1 + (row.returnPct ?? 0) / 100));
+
                 return (
                   <tr
                     key={row.contestParticipantId}
-                    style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", transition: "background 0.15s" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    style={{
+                      borderBottom: "1px solid var(--border)",
+                      background: isMe ? "rgba(59, 130, 246, 0.1)" : "transparent",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = isMe ? "rgba(59, 130, 246, 0.16)" : "var(--bg-elevated)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = isMe ? "rgba(59, 130, 246, 0.1)" : "transparent")}
                   >
                     <td style={{ padding: "14px 14px", textAlign: "center" }}>{rankDisplay}</td>
                     <td style={{ padding: "14px 14px" }}>
@@ -716,8 +729,18 @@ export default function ContestDetail() {
                         >
                           {getInitials(row.name || "Trader")}
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{row.name}</span>
+                        <div>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{row.name}</span>
+                          {isMe && (
+                            <span style={{ marginLeft: 8, background: "rgba(59, 130, 246, 0.15)", color: "#3b82f6", padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                              YOU
+                            </span>
+                          )}
+                        </div>
                       </div>
+                    </td>
+                    <td style={{ padding: "14px 14px", textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                      {navVal != null ? `₹${Number(navVal).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "-"}
                     </td>
                     <td style={{ padding: "14px 14px", textAlign: "right" }}>
                       <span
@@ -728,6 +751,7 @@ export default function ContestDetail() {
                           background: row.returnPct >= 0 ? "rgba(22, 163, 74, 0.1)" : "rgba(220, 38, 38, 0.1)",
                           padding: "3px 8px",
                           borderRadius: 6,
+                          display: "inline-block",
                         }}
                       >
                         {row.returnPct >= 0 ? "+" : ""}
@@ -752,16 +776,30 @@ export default function ContestDetail() {
                     <td style={{ padding: "14px 14px", textAlign: "center" }}>
                       <span
                         style={{
-                          background: "rgba(96, 165, 250, 0.15)",
-                          border: "1px solid rgba(96, 165, 250, 0.3)",
-                          color: "#60a5fa",
+                          background: "rgba(239, 68, 68, 0.08)",
+                          color: "#ef4444",
                           padding: "2px 8px",
                           borderRadius: 6,
                           fontSize: 12,
-                          fontWeight: 700,
+                          fontWeight: 600,
                         }}
                       >
-                        {row.compositeScore.toFixed(3)}
+                        {Number(row.maxDrawdownPct ?? 0).toFixed(2)}%
+                      </span>
+                    </td>
+                    <td style={{ padding: "14px 14px", textAlign: "center" }}>
+                      <span
+                        style={{
+                          background: "rgba(59, 130, 246, 0.12)",
+                          border: "1px solid rgba(59, 130, 246, 0.25)",
+                          color: "#2563eb",
+                          padding: "3px 10px",
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {Number(row.compositeScore ?? 0).toFixed(3)}
                       </span>
                     </td>
                   </tr>
@@ -770,7 +808,7 @@ export default function ContestDetail() {
 
               {leaderboard.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ padding: 40, textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
+                  <td colSpan={7} style={{ padding: 40, textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
                     No scored entries yet — leaderboard rankings update periodically once the contest starts.
                   </td>
                 </tr>
