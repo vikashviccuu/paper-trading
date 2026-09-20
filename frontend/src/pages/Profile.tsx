@@ -20,12 +20,12 @@ const TABS = [
 
 
 const KYC_STATUS_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  NOT_STARTED:       { bg: "#1a1f2e", color: "#64748b", border: "#1e2d3d" },
-  DOCUMENTS_PENDING: { bg: "#2d2000", color: "#d29922", border: "#5c4000" },
-  SUBMITTED:         { bg: "#1e3a5f", color: "#60a5fa", border: "#2563eb" },
-  UNDER_REVIEW:      { bg: "#1e3a5f", color: "#60a5fa", border: "#2563eb" },
-  VERIFIED:          { bg: "#0d2818", color: "#3fb950", border: "#1a4731" },
-  REJECTED:          { bg: "#2d0f0e", color: "#f85149", border: "#5c1f1d" },
+  NOT_STARTED:       { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" },
+  DOCUMENTS_PENDING: { bg: "var(--yellow-bg)", color: "var(--yellow)", border: "var(--yellow-border)" },
+  SUBMITTED:         { bg: "var(--blue-bg)", color: "var(--accent)", border: "var(--blue-border)" },
+  UNDER_REVIEW:      { bg: "var(--blue-bg)", color: "var(--accent)", border: "var(--blue-border)" },
+  VERIFIED:          { bg: "var(--green-bg)", color: "var(--green)", border: "var(--green-border)" },
+  REJECTED:          { bg: "var(--red-bg)", color: "var(--red)", border: "var(--red-border)" },
 };
 
 export default function Profile() {
@@ -36,7 +36,7 @@ export default function Profile() {
   useEffect(load, []);
 
   if (!data) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: "#475569" }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: "var(--text-secondary)" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
         <div>Loading profile...</div>

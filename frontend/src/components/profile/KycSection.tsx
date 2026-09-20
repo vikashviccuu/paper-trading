@@ -73,12 +73,12 @@ export default function KycSection({ fullName, kyc, onChanged }: { fullName: str
   return (
     <PCard title="KYC Verification" icon="🛡️" subtitle="Complete KYC to unlock contest prizes and live trading">
       {/* Status banner */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, padding: "10px 14px", background: "#131920", borderRadius: 10, border: "1px solid #1e2d3d" }}>
-        <span style={{ fontSize: 13, color: "#8b949e" }}>KYC Status</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, padding: "12px 16px", background: "var(--bg-elevated)", borderRadius: 10, border: "1px solid var(--border)", boxShadow: "var(--card-shadow)" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>KYC Status</span>
         <span className={`p-badge ${STATUS_BADGE[kyc.status] ?? "p-badge-gray"}`}>{kyc.status.replace(/_/g, " ")}</span>
       </div>
       {kyc.status === "REJECTED" && kyc.rejectionReason && (
-        <div style={{ marginBottom: 16, padding: "10px 14px", background: "#2d0f0e", border: "1px solid #5c1f1d", borderRadius: 10, color: "#f85149", fontSize: 13 }}>
+        <div style={{ marginBottom: 16, padding: "12px 16px", background: "var(--red-bg)", border: "1px solid var(--red-border)", borderRadius: 10, color: "var(--red)", fontSize: 13 }}>
           ✗ Rejected: {kyc.rejectionReason}
         </div>
       )}
@@ -117,15 +117,15 @@ export default function KycSection({ fullName, kyc, onChanged }: { fullName: str
               {DOCS.map((dt) => {
                 const doc = docByType.get(dt.value);
                 return (
-                  <div key={dt.value} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#0d1117", border: "1px solid #1e2d3d", borderRadius: 8 }}>
-                    <span style={{ fontSize: 18 }}>{dt.icon}</span>
+                  <div key={dt.value} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, transition: "border-color 0.15s" }}>
+                    <span style={{ fontSize: 20 }}>{dt.icon}</span>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#e6edf3" }}>{dt.label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{dt.label}</div>
                       {doc && <span className={`p-badge ${DOC_STATUS_BADGE[doc.status] ?? "p-badge-gray"}`} style={{ marginTop: 3 }}>{doc.status}</span>}
                     </div>
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 8 }}>
                       {doc && <button type="button" className="p-btn-sec" onClick={() => viewDoc(doc)}>View</button>}
-                      <label style={{ padding: "7px 12px", background: "#1e2d42", color: "#60a5fa", border: "1px solid #2563eb44", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      <label style={{ padding: "8px 14px", background: "var(--blue-bg)", color: "var(--accent)", border: "1px solid var(--blue-border)", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s" }}>
                         {doc ? "Replace" : "Upload"}
                         <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadDoc(dt.value, f); }} />
                       </label>

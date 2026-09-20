@@ -50,21 +50,22 @@ export default function LoginHistorySection() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Header card with security guidance */}
       <div style={{
-        background: "rgba(13, 17, 28, 0.95)",
-        border: "1px solid #1e2d3d",
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border)",
         borderRadius: 14,
         padding: "20px 24px",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: 16
+        gap: 16,
+        boxShadow: "var(--card-shadow)",
       }}>
         <div>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: "#e6edf3", display: "flex", alignItems: "center", gap: 8 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 8 }}>
             <span>🔐</span> Security &amp; Login History
           </h3>
-          <p style={{ fontSize: 13, color: "#8b949e", marginTop: 4 }}>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
             Review all recent logins, recognized devices, and network IP addresses accessing your account.
           </p>
         </div>
@@ -72,17 +73,18 @@ export default function LoginHistorySection() {
           onClick={() => load(page)}
           disabled={loading}
           style={{
-            background: "#161b22",
-            border: "1px solid #30363d",
-            color: "#e6edf3",
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border)",
+            color: "var(--text-primary)",
             borderRadius: 8,
-            padding: "8px 14px",
+            padding: "8px 16px",
             fontSize: 12,
             fontWeight: 600,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             gap: 6,
+            transition: "all 0.15s",
           }}
         >
           <span>🔄</span> {loading ? "Refreshing..." : "Refresh"}
@@ -91,8 +93,8 @@ export default function LoginHistorySection() {
 
       {/* Security notice tip */}
       <div style={{
-        background: "rgba(37, 99, 235, 0.08)",
-        border: "1px solid rgba(37, 99, 235, 0.25)",
+        background: "var(--blue-bg)",
+        border: "1px solid var(--blue-border)",
         borderRadius: 12,
         padding: "14px 18px",
         display: "flex",
@@ -100,39 +102,40 @@ export default function LoginHistorySection() {
         gap: 12,
       }}>
         <span style={{ fontSize: 20 }}>🛡️</span>
-        <div style={{ fontSize: 12, color: "#93c5fd", lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: "var(--accent)", lineHeight: 1.5 }}>
           <strong>Security Protection:</strong> If you notice an unfamiliar IP address or unrecognized device, we recommend changing your password immediately and reporting any suspicious behavior.
         </div>
       </div>
 
       {/* Login records */}
       <div style={{
-        background: "rgba(13, 17, 28, 0.95)",
-        border: "1px solid #1e2d3d",
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border)",
         borderRadius: 14,
         overflow: "hidden",
+        boxShadow: "var(--card-shadow)",
       }}>
         <div style={{
           padding: "16px 20px",
-          borderBottom: "1px solid #1e2d3d",
+          borderBottom: "1px solid var(--border)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
         }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#e6edf3" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
             Recent Sessions ({total})
           </span>
-          <span style={{ fontSize: 11, color: "#8b949e" }}>
-            Current Device ID: <code style={{ color: "#60a5fa" }}>{currentDeviceId.slice(0, 8)}...</code>
+          <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+            Current Device ID: <code style={{ color: "var(--accent)" }}>{currentDeviceId.slice(0, 8)}...</code>
           </span>
         </div>
 
         {loading && history.length === 0 ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "#64748b", fontSize: 13 }}>
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
             Loading login history...
           </div>
         ) : history.length === 0 ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "#64748b", fontSize: 13 }}>
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
             No recorded login history found yet.
           </div>
         ) : (
@@ -148,13 +151,14 @@ export default function LoginHistorySection() {
                   key={item.id}
                   style={{
                     padding: "16px 20px",
-                    borderBottom: "1px solid #161b22",
+                    borderBottom: "1px solid var(--border)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     flexWrap: "wrap",
                     gap: 14,
-                    background: isThisDevice ? "rgba(37, 99, 235, 0.03)" : "transparent",
+                    background: isThisDevice ? "var(--blue-bg)" : "transparent",
+                    transition: "background 0.15s",
                   }}
                 >
                   {/* Left: Device & Status */}
@@ -164,8 +168,8 @@ export default function LoginHistorySection() {
                         width: 42,
                         height: 42,
                         borderRadius: 10,
-                        background: isSuccess ? "rgba(63, 185, 80, 0.12)" : "rgba(248, 81, 73, 0.12)",
-                        border: `1px solid ${isSuccess ? "rgba(63, 185, 80, 0.3)" : "rgba(248, 81, 73, 0.3)"}`,
+                        background: isSuccess ? "var(--green-bg)" : "var(--red-bg)",
+                        border: `1px solid ${isSuccess ? "var(--green-border)" : "var(--red-border)"}`,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -178,15 +182,15 @@ export default function LoginHistorySection() {
 
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: "#e6edf3" }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
                           {item.browser} {item.browserVersion ? `(${item.browserVersion.split(".")[0]})` : ""}
                         </span>
                         {isThisDevice && (
                           <span
                             style={{
-                              background: "rgba(37, 99, 235, 0.2)",
-                              color: "#60a5fa",
-                              border: "1px solid rgba(37, 99, 235, 0.4)",
+                              background: "var(--blue-bg)",
+                              color: "var(--accent)",
+                              border: "1px solid var(--blue-border)",
                               borderRadius: 99,
                               padding: "2px 8px",
                               fontSize: 10,
@@ -198,9 +202,9 @@ export default function LoginHistorySection() {
                         )}
                         <span
                           style={{
-                            background: isSuccess ? "rgba(63, 185, 80, 0.15)" : "rgba(248, 81, 73, 0.15)",
-                            color: isSuccess ? "#3fb950" : "#f85149",
-                            border: `1px solid ${isSuccess ? "rgba(63, 185, 80, 0.3)" : "rgba(248, 81, 73, 0.3)"}`,
+                            background: isSuccess ? "var(--green-bg)" : "var(--red-bg)",
+                            color: isSuccess ? "var(--green)" : "var(--red)",
+                            border: `1px solid ${isSuccess ? "var(--green-border)" : "var(--red-border)"}`,
                             borderRadius: 99,
                             padding: "2px 8px",
                             fontSize: 10,
@@ -211,7 +215,7 @@ export default function LoginHistorySection() {
                         </span>
                       </div>
 
-                      <div style={{ fontSize: 12, color: "#8b949e", marginTop: 3 }}>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 3 }}>
                         <span>{item.os}</span>
                         {item.deviceModel && item.deviceModel !== "PC (Windows)" && item.deviceModel !== "Macintosh" && (
                           <span> · {item.deviceModel}</span>
@@ -224,21 +228,22 @@ export default function LoginHistorySection() {
                   {/* Middle: IP & Location */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 160 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: "#8b949e" }}>IP:</span>
+                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>IP:</span>
                       <code
                         style={{
-                          background: "#161b22",
-                          padding: "2px 6px",
+                          background: "var(--bg-elevated)",
+                          border: "1px solid var(--border)",
+                          padding: "2px 8px",
                           borderRadius: 4,
                           fontSize: 12,
-                          color: "#c9d1d9",
-                          fontFamily: "monospace",
+                          color: "var(--accent)",
+                          fontFamily: "var(--font-mono)",
                         }}
                       >
                         {item.ipAddress}
                       </code>
                     </div>
-                    <div style={{ fontSize: 11, color: "#64748b" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                       {item.city ? `${item.city}, ` : ""}{item.country || "Network session"}
                       {item.timezone ? ` · ${item.timezone.split("/")[1] || item.timezone}` : ""}
                     </div>
@@ -246,10 +251,10 @@ export default function LoginHistorySection() {
 
                   {/* Right: Timestamp */}
                   <div style={{ textAlign: "right", minWidth: 140 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#e6edf3" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
                       {formatRelativeTime(item.createdAt)}
                     </div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
                       {new Date(item.createdAt).toLocaleDateString("en-IN", {
                         day: "numeric",
                         month: "short",
@@ -269,13 +274,13 @@ export default function LoginHistorySection() {
         {totalPages > 1 && (
           <div
             style={{
-              padding: "12px 20px",
-              borderTop: "1px solid #1e2d3d",
+              padding: "14px 20px",
+              borderTop: "1px solid var(--border)",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
               fontSize: 12,
-              color: "#8b949e",
+              color: "var(--text-secondary)",
             }}
           >
             <span>Page {page} of {totalPages}</span>
@@ -284,12 +289,13 @@ export default function LoginHistorySection() {
                 onClick={() => load(page - 1)}
                 disabled={page <= 1 || loading}
                 style={{
-                  background: "#161b22",
-                  border: "1px solid #30363d",
-                  color: page <= 1 ? "#484f58" : "#e6edf3",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border)",
+                  color: page <= 1 ? "var(--text-muted)" : "var(--text-primary)",
                   borderRadius: 6,
-                  padding: "4px 10px",
+                  padding: "6px 12px",
                   fontSize: 11,
+                  fontWeight: 600,
                   cursor: page <= 1 ? "default" : "pointer",
                 }}
               >
@@ -299,12 +305,13 @@ export default function LoginHistorySection() {
                 onClick={() => load(page + 1)}
                 disabled={page >= totalPages || loading}
                 style={{
-                  background: "#161b22",
-                  border: "1px solid #30363d",
-                  color: page >= totalPages ? "#484f58" : "#e6edf3",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border)",
+                  color: page >= totalPages ? "var(--text-muted)" : "var(--text-primary)",
                   borderRadius: 6,
-                  padding: "4px 10px",
+                  padding: "6px 12px",
                   fontSize: 11,
+                  fontWeight: 600,
                   cursor: page >= totalPages ? "default" : "pointer",
                 }}
               >

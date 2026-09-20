@@ -71,13 +71,13 @@ export default function AdminKycQueue() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "8px 0 40px" }}>
       {/* Header Banner Card */}
       <div style={{
-        background: "rgba(13, 17, 28, 0.85)",
+        background: "var(--bg-surface)",
         backdropFilter: "blur(16px)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
+        border: "1px solid var(--border)",
         borderRadius: 16,
         padding: "24px 28px",
         marginBottom: 24,
-        boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+        boxShadow: "var(--card-shadow)",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
@@ -90,7 +90,7 @@ export default function AdminKycQueue() {
               KYC Review Queue
             </h2>
             <span style={{
-              background: "rgba(37, 99, 235, 0.15)", border: "1px solid rgba(37, 99, 235, 0.3)",
+              background: "rgba(37, 99, 235, 0.15)", border: "1px solid var(--border)",
               padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, color: "#60a5fa"
             }}>
               {entries.length} PENDING SUBMISSIONS
@@ -118,12 +118,12 @@ export default function AdminKycQueue() {
       <div style={{ display: "grid", gridTemplateColumns: selected ? "1.3fr 1fr" : "1fr", gap: 24 }}>
         {/* Submissions Table Card */}
         <div style={{
-          background: "rgba(13, 17, 28, 0.85)",
+          background: "var(--bg-surface)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
+          border: "1px solid var(--border)",
           borderRadius: 16,
           padding: 24,
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)"
+          boxShadow: "var(--card-shadow)"
         }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
@@ -144,7 +144,7 @@ export default function AdminKycQueue() {
                     <tr
                       key={e.id}
                       style={{
-                        borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
+                        borderBottom: "1px solid var(--border)",
                         background: isSelected ? "rgba(37, 99, 235, 0.08)" : "transparent",
                         transition: "background 0.15s"
                       }}
@@ -219,12 +219,12 @@ export default function AdminKycQueue() {
         {/* Selected Application Review Drawer */}
         {selected && (
           <div style={{
-            background: "rgba(13, 17, 28, 0.95)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(37, 99, 235, 0.3)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: 24,
-            boxShadow: "0 25px 50px rgba(0, 0, 0, 0.5)",
+            boxShadow: "var(--card-shadow)",
             height: "fit-content"
           }}>
             {/* Header / Close */}

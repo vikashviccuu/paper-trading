@@ -101,13 +101,13 @@ export default function AdminLiveTrading() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "8px 0 40px" }}>
       {/* Header Banner Card */}
       <div style={{
-        background: "rgba(13, 17, 28, 0.85)",
+        background: "var(--bg-surface)",
         backdropFilter: "blur(16px)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
+        border: "1px solid var(--border)",
         borderRadius: 16,
         padding: "24px 28px",
         marginBottom: 24,
-        boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+        boxShadow: "var(--card-shadow)",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
@@ -172,12 +172,12 @@ export default function AdminLiveTrading() {
       <div style={{ display: "grid", gridTemplateColumns: selected ? "1.4fr 1fr" : "1fr", gap: 24 }}>
         {/* Accounts List Card */}
         <div style={{
-          background: "rgba(13, 17, 28, 0.85)",
+          background: "var(--bg-surface)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
+          border: "1px solid var(--border)",
           borderRadius: 16,
           padding: 24,
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)"
+          boxShadow: "var(--card-shadow)"
         }}>
           {/* Controls Bar: Filter Tabs + Search Input */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
@@ -235,7 +235,7 @@ export default function AdminLiveTrading() {
                     <tr
                       key={a.id}
                       style={{
-                        borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
+                        borderBottom: "1px solid var(--border)",
                         background: isSelected ? "rgba(37, 99, 235, 0.08)" : "transparent",
                         transition: "background 0.15s"
                       }}
@@ -355,12 +355,12 @@ export default function AdminLiveTrading() {
         {/* Selected Account Audit Drawer / Details */}
         {selected && (
           <div style={{
-            background: "rgba(13, 17, 28, 0.85)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(37, 99, 235, 0.25)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: 24,
-            boxShadow: "0 25px 50px rgba(0, 0, 0, 0.5)",
+            boxShadow: "var(--card-shadow)",
             height: "fit-content"
           }}>
             {/* Header / Close button */}
@@ -431,7 +431,7 @@ export default function AdminLiveTrading() {
                 </thead>
                 <tbody>
                   {orders.map((o) => (
-                    <tr key={o.id} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)" }}>
+                    <tr key={o.id} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "8px 6px", fontWeight: 700, color: "var(--text-primary)" }}>
                         {o.tradingSymbol}
                         <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{o.exchange || o.broker}</div>

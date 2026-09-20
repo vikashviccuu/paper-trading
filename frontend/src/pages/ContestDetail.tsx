@@ -95,9 +95,9 @@ export default function ContestDetail() {
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px", textAlign: "center" }}>
         <div
           style={{
-            background: "rgba(13, 17, 28, 0.75)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: "48px 24px",
             color: "var(--text-secondary)",
@@ -126,7 +126,7 @@ export default function ContestDetail() {
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px" }}>
         <div
           style={{
-            background: "rgba(13, 17, 28, 0.75)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
             border: "1px solid rgba(248, 81, 73, 0.3)",
             borderRadius: 16,
@@ -193,13 +193,13 @@ export default function ContestDetail() {
 
       <div
         style={{
-          background: "rgba(13, 17, 28, 0.85)",
+          background: "var(--bg-surface)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
+          border: "1px solid var(--border)",
           borderRadius: 16,
           padding: "24px 28px",
           marginBottom: 24,
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+          boxShadow: "var(--card-shadow)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
@@ -226,7 +226,7 @@ export default function ContestDetail() {
                 <span
                   style={{
                     background: "rgba(255, 255, 255, 0.05)",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    border: "1px solid var(--border)",
                     color: "var(--text-secondary)",
                     padding: "4px 12px",
                     borderRadius: 99,
@@ -335,9 +335,9 @@ export default function ContestDetail() {
       >
         <div
           style={{
-            background: "rgba(13, 17, 28, 0.75)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 14,
             padding: "18px 20px",
           }}
@@ -352,9 +352,9 @@ export default function ContestDetail() {
 
         <div
           style={{
-            background: "rgba(13, 17, 28, 0.75)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 14,
             padding: "18px 20px",
           }}
@@ -375,9 +375,9 @@ export default function ContestDetail() {
 
         <div
           style={{
-            background: "rgba(13, 17, 28, 0.75)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 14,
             padding: "18px 20px",
           }}
@@ -393,9 +393,9 @@ export default function ContestDetail() {
 
         <div
           style={{
-            background: "rgba(13, 17, 28, 0.75)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 14,
             padding: "18px 20px",
           }}
@@ -481,13 +481,13 @@ export default function ContestDetail() {
       {joined && me?.participant && (
         <div
           style={{
-            background: "rgba(13, 17, 28, 0.85)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: 24,
             marginBottom: 24,
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+            boxShadow: "var(--card-shadow)",
           }}
         >
           <h3 style={{ fontSize: 16, fontWeight: 800, color: "#fff", marginBottom: 16 }}>
@@ -527,13 +527,13 @@ export default function ContestDetail() {
       {prizePool && Number(prizePool.totalPrizePool) > 0 && (
         <div
           style={{
-            background: "rgba(13, 17, 28, 0.85)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: 24,
             marginBottom: 24,
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+            boxShadow: "var(--card-shadow)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -587,12 +587,12 @@ export default function ContestDetail() {
 
       <div
         style={{
-          background: "rgba(13, 17, 28, 0.85)",
+          background: "var(--bg-surface)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
+          border: "1px solid var(--border)",
           borderRadius: 16,
           padding: 24,
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+          boxShadow: "var(--card-shadow)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
@@ -738,7 +738,7 @@ export default function ContestDetail() {
                       <span
                         style={{
                           background: "rgba(255, 255, 255, 0.05)",
-                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          border: "1px solid var(--border)",
                           padding: "2px 8px",
                           borderRadius: 6,
                           fontSize: 12,

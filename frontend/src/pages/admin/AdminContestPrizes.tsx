@@ -139,13 +139,13 @@ export default function AdminContestPrizes() {
       {/* Header Banner Card */}
       <div
         style={{
-          background: "rgba(13, 17, 28, 0.85)",
+          background: "var(--bg-surface)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
+          border: "1px solid var(--border)",
           borderRadius: 16,
           padding: "24px 28px",
           marginBottom: 24,
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+          boxShadow: "var(--card-shadow)",
         }}
       >
         <div style={{ marginBottom: 12 }}>
@@ -199,7 +199,7 @@ export default function AdminContestPrizes() {
               padding: "10px 14px",
               borderRadius: 8,
               background: "rgba(37, 99, 235, 0.15)",
-              border: "1px solid rgba(37, 99, 235, 0.3)",
+              border: "1px solid var(--border)",
               color: "#60a5fa",
               fontSize: 13,
               fontWeight: 600,
@@ -213,13 +213,13 @@ export default function AdminContestPrizes() {
       {/* Prize Pool Config Card */}
       <div
         style={{
-          background: "rgba(13, 17, 28, 0.85)",
+          background: "var(--bg-surface)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
+          border: "1px solid var(--border)",
           borderRadius: 16,
           padding: 24,
           marginBottom: 24,
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+          boxShadow: "var(--card-shadow)",
         }}
       >
         <h3 style={{ fontSize: 16, fontWeight: 800, color: "#fff", marginBottom: 16 }}>
@@ -282,7 +282,7 @@ export default function AdminContestPrizes() {
                           width: 80,
                           padding: "6px 10px",
                           borderRadius: 6,
-                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          border: "1px solid var(--border)",
                           background: "rgba(255, 255, 255, 0.05)",
                           color: "#fff",
                           fontSize: 13,
@@ -300,7 +300,7 @@ export default function AdminContestPrizes() {
                           width: 80,
                           padding: "6px 10px",
                           borderRadius: 6,
-                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          border: "1px solid var(--border)",
                           background: "rgba(255, 255, 255, 0.05)",
                           color: "#fff",
                           fontSize: 13,
@@ -320,7 +320,7 @@ export default function AdminContestPrizes() {
                           width: 100,
                           padding: "6px 10px",
                           borderRadius: 6,
-                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          border: "1px solid var(--border)",
                           background: "rgba(255, 255, 255, 0.05)",
                           color: "#fff",
                           fontSize: 13,
@@ -446,12 +446,12 @@ export default function AdminContestPrizes() {
       {/* Winner Payout Table Card */}
       <div
         style={{
-          background: "rgba(13, 17, 28, 0.85)",
+          background: "var(--bg-surface)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
+          border: "1px solid var(--border)",
           borderRadius: 16,
           padding: 24,
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+          boxShadow: "var(--card-shadow)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>

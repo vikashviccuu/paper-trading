@@ -44,9 +44,9 @@ export default function CommunicationDetailsForm({ profile, onSaved }: { profile
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
         {/* Phone */}
-        <div style={{ background: "#131920", border: "1px solid #1e2d3d", borderRadius: 10, padding: 16 }}>
+        <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 12, padding: 18, boxShadow: "var(--card-shadow)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "#e6edf3" }}>Mobile Number</div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)" }}>Mobile Number</div>
             {profile.phoneVerified && <span className="p-badge p-badge-green">✓ Verified</span>}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -62,7 +62,7 @@ export default function CommunicationDetailsForm({ profile, onSaved }: { profile
             </div>
           )}
           {devOtp && (
-            <div style={{ marginTop: 8, padding: "7px 10px", background: "#1e2d42", borderRadius: 6, fontSize: 12, color: "#60a5fa" }}>
+            <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--blue-bg)", border: "1px solid var(--blue-border)", borderRadius: 8, fontSize: 12, color: "var(--accent)" }}>
               Dev mode — OTP: <strong style={{ fontFamily: "monospace" }}>{devOtp}</strong>
             </div>
           )}

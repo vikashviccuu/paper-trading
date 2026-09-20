@@ -55,13 +55,13 @@ function AdminMarketBrokerCard() {
 
   return (
     <div style={{
-      background: "rgba(13, 17, 28, 0.95)",
+      background: "var(--bg-surface)",
       backdropFilter: "blur(16px)",
-      border: "1px solid rgba(37, 99, 235, 0.35)",
+      border: "1px solid var(--border)",
       borderRadius: 16,
       padding: "22px 26px",
       marginBottom: 24,
-      boxShadow: "0 20px 40px rgba(0, 0, 0, 0.45)",
+      boxShadow: "var(--card-shadow)",
       display: "flex",
       flexDirection: "column",
       gap: 16
@@ -192,8 +192,8 @@ function AdminMarketBrokerCard() {
           onClick={() => handleFullSync(["NSE"])}
           disabled={syncing}
           style={{
-            padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.1)",
-            background: "rgba(255, 255, 255, 0.05)", color: "var(--text-secondary)",
+            padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)",
+            background: "var(--bg-elevated)", color: "var(--text-secondary)",
             fontWeight: 700, fontSize: 11, cursor: syncing ? "not-allowed" : "pointer"
           }}
         >
@@ -204,8 +204,8 @@ function AdminMarketBrokerCard() {
           onClick={() => handleFullSync(["NFO"])}
           disabled={syncing}
           style={{
-            padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.1)",
-            background: "rgba(255, 255, 255, 0.05)", color: "var(--text-secondary)",
+            padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)",
+            background: "var(--bg-elevated)", color: "var(--text-secondary)",
             fontWeight: 700, fontSize: 11, cursor: syncing ? "not-allowed" : "pointer"
           }}
         >
@@ -216,8 +216,8 @@ function AdminMarketBrokerCard() {
           onClick={() => handleFullSync(["MCX"])}
           disabled={syncing}
           style={{
-            padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.1)",
-            background: "rgba(255, 255, 255, 0.05)", color: "var(--text-secondary)",
+            padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)",
+            background: "var(--bg-elevated)", color: "var(--text-secondary)",
             fontWeight: 700, fontSize: 11, cursor: syncing ? "not-allowed" : "pointer"
           }}
         >
@@ -263,13 +263,13 @@ export default function AdminDashboard() {
 
       {/* Top Banner Card */}
       <div style={{
-        background: "rgba(13, 17, 28, 0.85)",
+        background: "var(--bg-surface)",
         backdropFilter: "blur(16px)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
+        border: "1px solid var(--border)",
         borderRadius: 16,
         padding: "24px 28px",
         marginBottom: 24,
-        boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+        boxShadow: "var(--card-shadow)",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
@@ -300,7 +300,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Filter Tabs Bar */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 20, background: "rgba(255, 255, 255, 0.03)", padding: 4, borderRadius: 10, border: "1px solid var(--border-light)", width: "fit-content" }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, background: "var(--bg-elevated)", padding: 4, borderRadius: 10, border: "1px solid var(--border)", width: "fit-content" }}>
         {STATUS_TABS.map((s) => (
           <button
             key={s}
@@ -329,12 +329,12 @@ export default function AdminDashboard() {
 
       {/* Contests Table Card */}
       <div style={{
-        background: "rgba(13, 17, 28, 0.85)",
+        background: "var(--bg-surface)",
         backdropFilter: "blur(16px)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
+        border: "1px solid var(--border)",
         borderRadius: 16,
         padding: 24,
-        boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)"
+        boxShadow: "var(--card-shadow)"
       }}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
@@ -353,13 +353,13 @@ export default function AdminDashboard() {
               {contests.map((c) => {
                 const badge = CONTEST_STATUS_BADGE[c.status] ?? CONTEST_STATUS_BADGE.ACTIVE;
                 return (
-                  <tr key={c.id} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)" }}>
+                  <tr key={c.id} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "14px 12px", fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>
                       {c.name}
                       {c.description && <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400, marginTop: 2 }}>{c.description}</div>}
                     </td>
                     <td style={{ padding: "14px 12px" }}>
-                      <span style={{ padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, background: "rgba(255, 255, 255, 0.05)", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
+                      <span style={{ padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, background: "var(--bg-elevated)", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>
                         {c.durationType}
                       </span>
                     </td>
@@ -384,8 +384,8 @@ export default function AdminDashboard() {
                       <Link
                         to={`/admin/contests/${c.id}`}
                         style={{
-                          padding: "6px 14px", borderRadius: 8, background: "rgba(37, 99, 235, 0.15)",
-                          border: "1px solid rgba(37, 99, 235, 0.3)", color: "#60a5fa",
+                          padding: "6px 14px", borderRadius: 8, background: "var(--blue-bg)",
+                          border: "1px solid var(--blue-border)", color: "var(--accent)",
                           fontSize: 12, fontWeight: 700, textDecoration: "none"
                         }}
                       >
@@ -445,13 +445,13 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <div style={{
-      background: "rgba(13, 17, 28, 0.95)",
+      background: "var(--bg-surface)",
       backdropFilter: "blur(16px)",
-      border: "1px solid rgba(37, 99, 235, 0.3)",
+      border: "1px solid var(--border)",
       borderRadius: 16,
       padding: 24,
       marginBottom: 24,
-      boxShadow: "0 20px 40px rgba(0, 0, 0, 0.5)"
+      boxShadow: "var(--card-shadow)"
     }}>
       <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>Create New Contest</h3>
       <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 20 }}>
@@ -472,7 +472,7 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
           />
         </div>
 
@@ -482,7 +482,7 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
             placeholder="Brief contest overview..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
           />
         </div>
 
@@ -491,10 +491,10 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
           <select
             value={durationType}
             onChange={(e) => setDurationType(e.target.value as any)}
-            style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
           >
             {DURATIONS.map((d) => (
-              <option key={d.value} value={d.value} style={{ background: "#0d1117" }}>{d.label}</option>
+              <option key={d.value} value={d.value} style={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}>{d.label}</option>
             ))}
           </select>
         </div>
@@ -506,7 +506,7 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             required
-            style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
           />
         </div>
 
@@ -518,7 +518,7 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               required
-              style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+              style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
             />
           </div>
         )}
@@ -530,7 +530,7 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
             min={1000}
             value={startingCash}
             onChange={(e) => setStartingCash(Number(e.target.value))}
-            style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
           />
         </div>
 
@@ -542,7 +542,7 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
             value={maxParticipants}
             placeholder="Unlimited if empty"
             onChange={(e) => setMaxParticipants(e.target.value === "" ? "" : Number(e.target.value))}
-            style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
           />
         </div>
 
@@ -555,7 +555,7 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
             max={1}
             value={returnWeight}
             onChange={(e) => setReturnWeight(Number(e.target.value))}
-            style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
           />
         </div>
 
@@ -568,7 +568,7 @@ function CreateContestForm({ onCreated }: { onCreated: () => void }) {
             max={1}
             value={riskWeight}
             onChange={(e) => setRiskWeight(Number(e.target.value))}
-            style={{ width: "100%", padding: "10px 12px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid var(--border-light)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-primary)", outline: "none" }}
           />
         </div>
 

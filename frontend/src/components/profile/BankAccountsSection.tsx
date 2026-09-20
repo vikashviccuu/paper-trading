@@ -40,16 +40,16 @@ export default function BankAccountsSection({ accounts, onChanged }: { accounts:
       {accounts.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
           {accounts.map((a) => (
-            <div key={a.id} style={{ background: "#131920", border: `1px solid ${a.isPrimary ? "#2563eb44" : "#1e2d3d"}`, borderRadius: 10, padding: "14px 16px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 22 }}>🏦</span>
+            <div key={a.id} style={{ background: "var(--bg-elevated)", border: `1px solid ${a.isPrimary ? "var(--accent)" : "var(--border)"}`, borderRadius: 12, padding: "16px 18px", boxShadow: "var(--card-shadow)", transition: "all 0.15s" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ fontSize: 24 }}>🏦</span>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: "#e6edf3", fontFamily: "monospace" }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)", fontFamily: "monospace" }}>
                       ••••{a.accountNumber.slice(-4)}
                       {a.isPrimary && <span className="p-badge p-badge-blue" style={{ marginLeft: 8 }}>Primary</span>}
                     </div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{a.ifsc}{a.bankName ? ` · ${a.bankName}` : ""}{a.nameAtBank ? ` · ${a.nameAtBank}` : ""}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{a.ifsc}{a.bankName ? ` · ${a.bankName}` : ""}{a.nameAtBank ? ` · ${a.nameAtBank}` : ""}</div>
                   </div>
                 </div>
                 <span className={`p-badge ${STATUS_BADGE[a.verificationStatus]}`}>{a.verificationStatus.replace(/_/g, " ")}</span>
@@ -65,17 +65,17 @@ export default function BankAccountsSection({ accounts, onChanged }: { accounts:
       )}
 
       {accounts.length === 0 && !showAdd && (
-        <div style={{ textAlign: "center", padding: "24px 0", color: "#64748b", marginBottom: 16 }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>🏦</div>
-          <div style={{ fontSize: 13 }}>No bank accounts added yet.</div>
+        <div style={{ textAlign: "center", padding: "28px 0", color: "var(--text-secondary)", marginBottom: 16 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🏦</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>No bank accounts added yet.</div>
           <div style={{ fontSize: 12, marginTop: 4 }}>Add a bank account to receive contest prize payouts.</div>
         </div>
       )}
 
       {/* Add form */}
       {showAdd && (
-        <div style={{ background: "#131920", border: "1px solid #1e2d3d", borderRadius: 10, padding: 16, marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#e6edf3", marginBottom: 14 }}>Add New Bank Account</div>
+        <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 12, padding: 18, marginBottom: 16, boxShadow: "var(--card-shadow)" }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)", marginBottom: 14 }}>Add New Bank Account</div>
           <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <PField label="Account Holder Name" required>
               <input className="p-input" value={holderName} onChange={(e) => setHolderName(e.target.value)} placeholder="As per bank records" required />
