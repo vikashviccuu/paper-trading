@@ -360,23 +360,23 @@ export default function Login() {
             )}
 
             <div style={{
-              background: "#161b22",
-              border: "1px solid #30363d",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
               borderRadius: 12,
               padding: "16px 18px",
               marginBottom: 16,
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#e6edf3", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 6 }}>
                   <span>📧</span> Email &amp; Mobile Security Code
                 </span>
                 <div style={{ display: "flex", gap: 6 }}>
                   {emailDeliveryError ? (
-                    <span style={{ fontSize: 11, color: "#f59e0b", fontWeight: 600 }}>● Email Offline</span>
+                    <span style={{ fontSize: 11, color: "var(--yellow)", fontWeight: 600 }}>● Email Offline</span>
                   ) : (
-                    <span style={{ fontSize: 11, color: "#38bdf8", fontWeight: 600 }}>● Email Sent</span>
+                    <span style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600 }}>● Email Sent</span>
                   )}
-                  {maskedPhone && <span style={{ fontSize: 11, color: "#3fb950", fontWeight: 600 }}>● SMS Active</span>}
+                  {maskedPhone && <span style={{ fontSize: 11, color: "var(--green)", fontWeight: 600 }}>● SMS Active</span>}
                 </div>
               </div>
               <input
@@ -390,8 +390,8 @@ export default function Login() {
                 autoFocus
                 style={{ letterSpacing: 6, fontWeight: 800, fontSize: 18, textAlign: "center" }}
               />
-              <div style={{ marginTop: 8, textAlign: "center", fontSize: 12, color: "#9ca3af" }}>
-                Target account: <strong style={{ color: "#38bdf8" }}>{email}</strong>
+              <div style={{ marginTop: 8, textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
+                Target account: <strong style={{ color: "var(--blue)" }}>{email}</strong>
               </div>
             </div>
 
@@ -406,7 +406,7 @@ export default function Login() {
                   setStep("credentials");
                   setError(null);
                 }}
-                style={{ background: "none", border: "none", color: "#8b949e", cursor: "pointer" }}
+                style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer" }}
               >
                 ← Change Account
               </button>
@@ -418,7 +418,7 @@ export default function Login() {
                   disabled={loading || resendCooldown > 0}
                   style={{
                     background: "none", border: "none",
-                    color: resendCooldown > 0 ? "#484f58" : "#38bdf8",
+                    color: resendCooldown > 0 ? "var(--text-muted)" : "var(--blue)",
                     fontWeight: 600, cursor: resendCooldown > 0 ? "default" : "pointer"
                   }}
                   title="Resend code to your email inbox"
@@ -432,7 +432,7 @@ export default function Login() {
                     disabled={loading || resendCooldown > 0}
                     style={{
                       background: "none", border: "none",
-                      color: resendCooldown > 0 ? "#484f58" : "#60a5fa",
+                      color: resendCooldown > 0 ? "var(--text-muted)" : "var(--blue)",
                       fontWeight: 600, cursor: resendCooldown > 0 ? "default" : "pointer"
                     }}
                     title="Resend code via mobile SMS"
@@ -448,8 +448,8 @@ export default function Login() {
         {/* STEP 3: Dual Unverified Account OTP Form */}
         {step === "unverified_dual" && (
           <form onSubmit={onSubmitDualOtp}>
-            <div style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#e6edf3", marginBottom: 6 }}>
+            <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
                 📧 Email Verification Code
               </div>
               <input
@@ -464,8 +464,8 @@ export default function Login() {
               />
             </div>
 
-            <div style={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#e6edf3", marginBottom: 6 }}>
+            <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
                 📱 Mobile SMS Code (MSG91)
               </div>
               <input

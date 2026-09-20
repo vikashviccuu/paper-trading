@@ -1,0 +1,85 @@
+# Modern Design & White Theme Overhaul Across Complete Application
+
+Implement a modern white theme as the default design system across the entire application (`/`, `/terminal`, `/admin/terminal`, `/portfolio`, etc.), ensuring all text, borders, cards, and interactive elements conditionally and dynamically adapt between White Theme and Dark Themes. Remove inline CSS styling across components and migrate them into structured classes in [global.css](file:///d:/python-pron/paper-trading-platform/frontend/src/styles/global.css).
+
+## User Review Required
+
+> [!IMPORTANT]
+> - **Modern White Default**: The application will default to the clean, high-contrast **Modern White** theme with pure white surfaces, soft slate borders, dark slate text, and crisp green/red accents.
+> - **Unified Theme Switcher**: A global theme switcher will be accessible from both the application navbar and the terminal, allowing immediate toggling between Modern White, Nordic Snow, Cyber Midnight, Pure Obsidian, Bloomberg Slate, Emerald Quant, Neon Nebula, and Titanium Charcoal.
+> - **Conditional Text Color**: All text colors will be dynamically conditioned on the active theme via semantic CSS variables and conditional classes, completely eliminating white-on-white text, invisible borders, and low-contrast elements.
+> - **Removal of Inline CSS**: Heavy `style={{ ... }}` objects in [Trade.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/Trade.tsx) and [App.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/App.tsx) will be refactored into semantic classes in [global.css](file:///d:/python-pron/paper-trading-platform/frontend/src/styles/global.css).
+
+---
+
+## Proposed Changes
+
+### Global Theme System & Design Tokens
+#### [NEW] [ThemeContext.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/store/ThemeContext.tsx)
+- Create a global `ThemeContext` providing `theme`, `setTheme`, `isLight`, and `themes` list.
+- Read and persist theme selection in `localStorage` under `"terminal_theme"` (defaulting to `"modern-white"`).
+- Automatically set `data-theme` on `document.documentElement` on change.
+
+#### [MODIFY] [index.html](file:///d:/python-pron/paper-trading-platform/frontend/index.html)
+- Set `<html lang="en" data-theme="modern-white">` to prevent dark-mode flash on initial load.
+
+#### [MODIFY] [main.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/main.tsx)
+- Wrap application with `ThemeProvider` so all routes and components share the same theme state.
+
+---
+
+### Design System & CSS Refactoring
+#### [MODIFY] [global.css](file:///d:/python-pron/paper-trading-platform/frontend/src/styles/global.css)
+- Set `:root` fallback variables to the Modern White tokens (`--bg-base: #f8fafc`, `--bg-surface: #ffffff`, `--text-primary: #0f172a`, `--border: #e2e8f0`).
+- Refine `[data-theme="modern-white"]` and `[data-theme="nordic-snow"]` for maximum contrast and modern financial terminal aesthetics.
+- Define reusable component classes to replace inline styles:
+  - **App Shell & Navbar**: `.app-shell`, `.app-nav`, `.app-nav-link`, `.app-nav-user`, `.app-theme-btn`.
+  - **Positions & Holdings**: `.t-pos-card`, `.t-pos-header`, `.t-pos-footer`, `.t-pos-sym`, `.t-pos-meta`, `.t-pos-pnl`, `.t-pos-sq-btn`, `.t-holding-card`, `.t-holding-footer`, `.t-holding-exit-btn`.
+  - **Orders & Trades**: `.t-order-card`, `.t-order-sym`, `.t-order-detail`, `.t-order-status`.
+  - **Watchlist & Search**: `.t-seg-bar`, `.t-seg-btn`, `.t-sym-card`, `.t-sym-header`, `.t-sym-name`, `.t-sym-tag`, `.t-sym-price`, `.t-sym-actions`.
+  - **Market Depth**: `.t-depth-card`, `.t-depth-header`, `.t-depth-grid`, `.t-depth-col`, `.t-depth-meter`.
+  - **Modals & Dialogs**: `.t-modal-overlay`, `.t-modal-card`, `.t-modal-header`, `.t-modal-stats-grid`, `.t-modal-stat-box`, `.t-modal-table-wrap`, `.t-modal-table`.
+  - **Ticker & Toolbar**: `.t-ticker-chip`, `.t-chip-close`, `.t-market-banner`.
+
+---
+
+### Application Navigation & Shell
+#### [MODIFY] [App.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/App.tsx)
+- Replace hardcoded dark backgrounds (`#080b12`, `#0d1117`, `#1e2d3d`) in `AdminApp` and `UserApp` with the new `.app-shell` and `.app-nav` classes.
+- Update nav links to adapt text color conditionally (`var(--text-secondary)`, active `var(--accent)`).
+- Add the interactive Theme Switcher button/dropdown in the main navbar so users can switch themes anywhere in the app.
+
+---
+
+### Terminal Refactoring & Inline Style Extraction
+#### [MODIFY] [Trade.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/Trade.tsx)
+- Consume `useTheme()` from `ThemeContext` instead of local theme state.
+- Replace inline style clusters across all sections with CSS classes:
+  - Positions & Closed Positions cards and square-off action buttons.
+  - Holdings cards, P&L calculations, and Exit/Sell action buttons.
+  - Orders list cards and status indicators.
+  - Search results, segment filter buttons (ALL, NSE, NFO, MCX), and action buttons.
+  - Chart toolbar stats chips and last close badge.
+  - Level 2 Market Depth Card and Full Depth Modal.
+  - Historical Data Modal (header, summary stat cards, table, sticky header).
+  - Quick Order drawer and market status notice.
+- Ensure all text and numerical values use theme-adaptive CSS classes (`var(--text-primary)`, `var(--text-secondary)`, `var(--text-muted)`, `var(--green)`, `var(--red)`).
+
+---
+
+## Verification Plan
+
+### Automated Build Verification
+- Execute `npm run build` inside `frontend/` to guarantee clean TypeScript compilation with zero linting or type errors.
+
+### Manual Verification
+1. **White Theme Default**:
+   - Navigate to `http://localhost:5174/` (Dashboard), `http://localhost:5174/terminal`, and `http://localhost:5174/admin/terminal`.
+   - Verify the background is clean crisp white, panels have light borders, and text is dark and easy to read.
+2. **Interactive Theme Switching**:
+   - Click the Theme Switcher in the top bar and toggle between **Modern White**, **Nordic Snow**, and dark themes like **Cyber Midnight** and **Bloomberg Slate**.
+   - Verify every UI section (Watchlist, Search results, Chart, Positions, Holdings, Orders, Market Depth, Modal Dialogs) transforms immediately and smoothly.
+3. **No White-on-White or Dark-on-Dark Text**:
+   - Check instrument symbols, prices, percentage changes, P&L values, table headers, and modal text in both light and dark modes to verify high contrast.
+4. **Interactive Responsiveness**:
+   - Hover over cards, buttons, watchlist rows, and tabs to confirm micro-animations and interactive feedback.

@@ -54,8 +54,8 @@ export default function Profile() {
 
       {/* ── Profile header card ── */}
       <div style={{
-        background: "linear-gradient(135deg, #0d1117 0%, #0a1628 100%)",
-        border: "1px solid #1e2d3d",
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border)",
         borderRadius: 16,
         padding: "28px 28px 24px",
         marginBottom: 20,
@@ -64,9 +64,10 @@ export default function Profile() {
         gap: 24,
         position: "relative",
         overflow: "hidden",
+        boxShadow: "var(--card-shadow)"
       }}>
         {/* Background glow */}
-        <div style={{ position: "absolute", top: -40, right: -40, width: 200, height: 200, background: "#2563eb11", borderRadius: "50%", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: -40, right: -40, width: 200, height: 200, background: "rgba(37, 99, 235, 0.08)", borderRadius: "50%", pointerEvents: "none" }} />
 
         {/* Avatar */}
         <div style={{
@@ -74,24 +75,24 @@ export default function Profile() {
           background: "linear-gradient(135deg, #1d4ed8, #7c3aed)",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 26, fontWeight: 900, color: "#fff", flexShrink: 0,
-          boxShadow: "0 0 0 4px #1e2d3d",
+          boxShadow: "0 0 0 4px var(--border)",
         }}>{initials}</div>
 
         {/* Info */}
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#e6edf3", marginBottom: 4 }}>{data.user.name}</div>
-          <div style={{ fontSize: 13, color: "#8b949e", marginBottom: 10 }}>{data.user.email} · Member since {memberSince}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>{data.user.name}</div>
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 10 }}>{data.user.email} · Member since {memberSince}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <span style={{ ...kycStyle, padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, border: `1px solid ${kycStyle.border}` }}>
               🛡️ KYC: {kycStatus.replace(/_/g, " ")}
             </span>
             {data.bankAccounts?.some((b: any) => b.verificationStatus === "VERIFIED") && (
-              <span style={{ background: "#0d2818", color: "#3fb950", border: "1px solid #1a4731", padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
+              <span style={{ background: "var(--green-bg)", color: "var(--green)", border: "1px solid var(--green-border)", padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
                 🏦 Bank Verified
               </span>
             )}
             {data.profile?.phoneVerified && (
-              <span style={{ background: "#0d2818", color: "#3fb950", border: "1px solid #1a4731", padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
+              <span style={{ background: "var(--green-bg)", color: "var(--green)", border: "1px solid var(--green-border)", padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
                 📱 Phone Verified
               </span>
             )}
@@ -102,20 +103,20 @@ export default function Profile() {
       {/* ── Tab bar ── */}
       <div style={{
         display: "flex", gap: 2,
-        background: "#0d1117", border: "1px solid #1e2d3d",
+        background: "var(--bg-surface)", border: "1px solid var(--border)",
         borderRadius: 10, padding: 4, marginBottom: 20,
       }}>
         {TABS.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex: 1, padding: "8px 4px",
             border: "none", borderRadius: 7,
-            background: tab === t.id ? "#1e2d42" : "transparent",
-            color: tab === t.id ? "#60a5fa" : "#64748b",
+            background: tab === t.id ? "var(--bg-elevated)" : "transparent",
+            color: tab === t.id ? "var(--accent)" : "var(--text-secondary)",
             fontWeight: tab === t.id ? 700 : 500,
             fontSize: 12, cursor: "pointer",
             display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
             transition: "all 0.15s",
-            boxShadow: tab === t.id ? "0 1px 4px #00000044" : "none",
+            boxShadow: tab === t.id ? "var(--card-shadow)" : "none",
           }}>
             <span style={{ fontSize: 16 }}>{t.icon}</span>
             {t.label}

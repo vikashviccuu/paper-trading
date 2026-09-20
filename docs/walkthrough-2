@@ -1,0 +1,85 @@
+# Walkthrough: Displaying Last Price & Last Close Price When Market is Closed
+
+## Overview
+We have resolved the user request to fix the platform so that when the market is closed (and during regular operation), all instruments display both their **Last Price (LTP)** and their **Last Close Price (Previous Close)**, alongside net change and change percentage.
+
+---
+
+## Changes Made
+
+### 1. Backend & Broker Updates
+- [backend/src/brokers/IBrokerAdapter.ts](file:///d:/python-pron/paper-trading-platform/backend/src/brokers/IBrokerAdapter.ts):
+  - Added optional `closePrice?: number;` to [`QuoteDTO`](file:///d:/python-pron/paper-trading-platform/backend/src/brokers/IBrokerAdapter.ts#L46-L70).
+- [backend/src/brokers/zerodha/ZerodhaAdapter.ts](file:///d:/python-pron/paper-trading-platform/backend/src/brokers/zerodha/ZerodhaAdapter.ts):
+  - Enriched both live [`KiteConnect.getQuote`](file:///d:/python-pron/paper-trading-platform/backend/src/brokers/zerodha/ZerodhaAdapter.ts#L124) and fallback quote generation to include `closePrice` and `close`.
+- [backend/src/websocket/priceFeedGateway.ts](file:///d:/python-pron/paper-trading-platform/backend/src/websocket/priceFeedGateway.ts):
+  - Ensured all WebSocket ticks emitted via `tick` event include `lastPrice`, `closePrice`, `close`, `netChange`, and `changePercent`.
+  - Maintained zero price jitter when market is closed (`isMarketOpen()` is false).
+- [backend/src/routes/market.routes.ts](file:///d:/python-pron/paper-trading-platform/backend/src/routes/market.routes.ts):
+  - Enriched every returned instrument in [`GET /api/market/instruments`](file:///d:/python-pron/paper-trading-platform/backend/src/routes/market.routes.ts#L56) with `lastPrice`, `closePrice`, `close`, `netChange`, and `changePercent`.
+
+### 2. Frontend Updates
+- [frontend/src/services/api.ts](file:///d:/python-pron/paper-trading-platform/frontend/src/services/api.ts):
+  - Added `closePrice?: number; close?: number; netChange?: number; changePercent?: number;` to the [`Instrument`](file:///d:/python-pron/paper-trading-platform/frontend/src/services/api.ts#L18-L27) interface.
+- [frontend/src/pages/Trade.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/Trade.tsx):
+  - **Top Index Ticker Bar (`TickerBar`)**:
+    - Displayed for each index (`NIFTY 50`, `BANKNIFTY`, `FINNIFTY`, `INDIA VIX`, `MIDCAP`):
+      - Symbol label
+      - **LTP**: `₹23,724.67`
+      - **Change**: `+23.72 (+0.10%)`
+      - **Close Badge**: `Close: ₹23,700.95`
+  - **Watchlist Symbol Cards**:
+    - Fixed `wPrices[r.instrumentToken]` object unpack bug so prices never display as `"—"`.
+    - Right side of each card now displays:
+      - **LTP (Last Price)** in high-contrast bold font (green if $\ge$ close, red if $<$ close).
+      - **Net Change & %** (e.g. `+23.72 (+0.10%)`).
+      - **Close Price** badge (e.g. `Close: ₹23,700.95`).
+    - Expanded accordion drawer displays an instrument price summary pill:
+      - `Last: ₹...  |  Last Close: ₹...  |  Chg: +... (+...%)`
+  - **Chart Toolbar Header Chip (`t-sym-chip`)**:
+    - Displays selected symbol's `LTP`, `Chg & %`, and a `Last Close: ₹...` pill.
+  - **Order Ticket Panel**:
+    - Displays an order ticket summary card with `Last Price (LTP)`, `Last Close Price`, and `Market Open / Closed` indicator.
+  - **Market Depth & Option Chain Modals**:
+    - Shows both `Spot LTP` and `Last Close` prices.
+  - **Positions & Holdings**:
+    - Corrected `wPrices` lookup with `.ltp` and displayed both `LTP` and `Close`.
+
+---
+
+## Verification Results
+
+### 1. Local TypeScript Build
+```bash
+frontend: tsc -b && vite build -> built in 22.49s (0 errors)
+backend:  tsc -p tsconfig.json -> exited with code 0 (0 errors)
+```
+
+### 2. Git Deployment
+- Changes committed and pushed to `https://github.com/vikashviccuu/paper-trading.git`:
+  - Commit [`9a79566`](https://github.com/vikashviccuu/paper-trading/commit/9a79566).
+
+### 3. Remote Server Rebuild & Live Test (`187.127.178.25`)
+- Pull and rebuild via Docker Compose succeeded:
+  - `paper-trading-platform-backend-1` (Up on port 4000)
+  - `paper-trading-platform-frontend-1` (Up on port 5173)
+  - `paper-trading-platform-postgres-1` (Up on port 5433)
+  - `paper-trading-platform-redis-1` (Up on port 6379)
+- Tested live `/api/market/status`:
+  - Output: `isOpen: false`, market closed reason with IST time.
+- Tested live `/api/market/quote`:
+  ```
+  Symbol: 256265       | Token: 256265   | LTP: ₹23650 | Close: ₹23531.75 | Chg: 118.25 (0.5%)
+  Symbol: 260105       | Token: 260105   | LTP: ₹51200 | Close: ₹50944.00 | Chg: 256.00 (0.5%)
+  Symbol: 257801       | Token: 257801   | LTP: ₹23800 | Close: ₹23681.00 | Chg: 119.00 (0.5%)
+  Symbol: 264969       | Token: 264969   | LTP: ₹13.80 | Close: ₹13.73    | Chg: 0.07   (0.51%)
+  Symbol: 288009       | Token: 288009   | LTP: ₹12650 | Close: ₹12586.75 | Chg: 63.25  (0.5%)
+  ```
+- Tested live `/api/market/instruments?limit=5`:
+  ```
+  Symbol: NIFTY 50     | LTP: ₹23724.67 | Close: ₹23700.95 | Chg: 23.72 (0.1%)
+  Symbol: MIDCAP       | LTP: ₹12650.00 | Close: ₹12615.00 | Chg: 35.00 (0.28%)
+  Symbol: INDIA VIX    | LTP: ₹13.73    | Close: ₹13.72    | Chg: 0.01  (0.07%)
+  Symbol: RELIANCE     | LTP: ₹1256.00  | Close: ₹1251.00  | Chg: 5.00  (0.4%)
+  Symbol: TCS          | LTP: ₹3210.00  | Close: ₹3202.00  | Chg: 8.00  (0.25%)
+  ```

@@ -1,0 +1,108 @@
+# Remove Hardcoded Values & Implement Database-Driven Dynamic Data for Terminal
+
+Remove all hardcoded and mock values from the trading terminal (`/admin/terminal` and `/terminal`, rendered via `frontend/src/pages/Trade.tsx`) and underlying backend endpoints. Ensure all data is queried from the database/broker adapter with robust fallbacks (`blank`, `"-"`, `0`) and comprehensive error handling so the page never breaks.
+
+## User Review Required
+
+> [!IMPORTANT]
+> - **Removal of Fake Synthetic Data**: Previously, if history, option chain, or depth data was missing, the UI fabricated fake candlestick bars (`generateSyntheticBars`), fake option chain strikes/OI/IV (`generateOptionChain`), and fake depth bids/asks (`generateMarketDepth`). These will be replaced with real database/broker queries. When data is absent from the database, the UI will cleanly display `-`, `0`, or an empty state instead of fabricated stock data.
+> - **Index Ticker Bar**: Initial hardcoded mock prices (`23724.67`, `51200.00`, etc.) will be removed. The ticker will start in a clean pending state (`—` / `-`) and populate dynamically from DB/broker quotes and WebSocket ticks.
+> - **API Keys**: Hardcoded Kite API keys (`"ouuv4g2r3iyafu5c"`, `"jfwd2gvwal8pq0rp"`) are completely removed from the frontend. Auth URLs are dynamically obtained from the backend.
+
+---
+
+## Proposed Changes
+
+### Backend API Enhancements
+
+#### [MODIFY] [market.routes.ts](file:///d:/python-pron/paper-trading-platform/backend/src/routes/market.routes.ts)
+- Add `GET /market/indices` endpoint to return the benchmark indices configured in the database, with their real-time or cached DB quotes.
+- Enhance `GET /market/stats` to ensure total instrument count is always returned quickly and safely.
+- In `GET /market/history`, ensure that when broker history is unavailable, it queries local database trades/bars or returns an empty list `[]` without fabricating fake stock prices, allowing the frontend to render the clean "no data" fallback.
+
+#### [MODIFY] [optionChain.routes.ts](file:///d:/python-pron/paper-trading-platform/backend/src/routes/optionChain.routes.ts)
+- Add `GET /options/expiries?underlying=...` to query real distinct expiry dates from the PostgreSQL `Instrument` table for the specified underlying.
+- In `GET /options/chain`, if the broker adapter returns empty or throws, query the `Instrument` table from Postgres (matching `segment: 'OPTIONS'` and underlying symbol) and merge with quote data, returning real database option contracts.
+- Handle any query errors gracefully and return `{ strikes: [], message: "..." }` instead of a 500 error.
+
+---
+
+### Frontend Services
+
+#### [MODIFY] [api.ts](file:///d:/python-pron/paper-trading-platform/frontend/src/services/api.ts)
+- Add `MarketAPI.indices()` to fetch index benchmarks from the backend.
+- Add `MarketAPI.stats()` to fetch instrument counts dynamically from the backend.
+- Add `OptionsAPI.expiries(underlying: string)` to fetch real expiry dates from the backend.
+- Ensure all API helpers are properly typed and error-safe.
+
+---
+
+### Frontend Terminal Page
+
+#### [MODIFY] [Trade.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/Trade.tsx)
+
+1. **Remove Hardcoded Initial Index Data**:
+   - Delete `INITIAL_INDEX_DATA` with hardcoded numbers (`23724.67`, `51200.00`, etc.).
+   - Initialize `prices` state with `{}`.
+   - For any index token that hasn't received quote data yet, render `—` for LTP, `—` for change, and `—` for close price.
+
+2. **Remove Hardcoded API Keys**:
+   - Delete `defaultApiKey` (`ouuv4g2r3iyafu5c`, `jfwd2gvwal8pq0rp`).
+   - Initialize `loginUrl` dynamically from `/broker/zerodha/login-url`. If not ready, handle cleanly with fallback without breaking.
+
+3. **Remove Hardcoded Symbol Count Badges**:
+   - Replace hardcoded `61,000+ SYMBOLS` badge with dynamic count fetched from `MarketAPI.stats()` (displaying `${stats.total.toLocaleString()} SYMBOLS` or `-` if loading).
+   - Update placeholder from `Search 60,000+ symbols...` to `Search symbols from database (e.g. RELIANCE, NIFTY)...`.
+
+4. **Replace Synthetic Option Chain with Real Database Data**:
+   - Remove `generateOptionChain(spotPrice)` and hardcoded expiries (`["24-SEP-2026", ...]`).
+   - In Option Chain modal:
+     - Fetch real expiries from `OptionsAPI.expiries(underlying)` from DB.
+     - Fetch real option chain data from `OptionsAPI.chain(underlying, expiry)`.
+     - Calculate PCR and Sentiment from real contract OI (displaying `0` or `-` if no open interest data).
+     - If no contracts are found in database, display `"No option contracts found in database for this symbol"` without breaking.
+
+5. **Replace Synthetic Market Depth with Real Quotes & Safe Fallbacks**:
+   - Remove `generateMarketDepth(price)` and hardcoded bids/asks/circuit limits (`* 1.10`, `* 0.90`, `0.05`).
+   - In `depthItem` modal:
+     - Fetch real quote and depth from `MarketAPI.quote([depthItem.instrumentToken])`.
+     - Render real 5-level depth levels.
+     - Fallbacks:
+       - Orders: `b.orders ?? "-"`
+       - Quantity: `b.quantity ? b.quantity.toLocaleString() : 0`
+       - Price: `b.price ? "₹" + Number(b.price).toFixed(2) : "-"`
+       - Upper/Lower Circuit: `quote.upperCircuitLimit ? "₹" + Number(quote.upperCircuitLimit).toFixed(2) : "-"`
+       - Spread: calculated if best ask and bid exist, else `"-"`.
+       - Totals: calculated from available depth or `0`.
+
+6. **Fix Inline MarketDepthCard**:
+   - Remove hardcoded order fallback `{b.orders || 1}` -> `{b.orders ?? "-"}`.
+   - Remove hardcoded circuit limit formulas `quote.close * 0.9` and `quote.close * 1.1` -> use `quote.lowerCircuitLimit` or `"-"`.
+   - Ensure VWAP and OI fall back to `"-"` when missing.
+
+7. **Remove Synthetic Candlestick Generation (`generateSyntheticBars`)**:
+   - When historical data from DB is empty, set `bars` to `[]` and show a clean chart placeholder `"No historical candle data available for this symbol"`.
+   - Prevent chart crashing or erratic canvas rendering.
+
+8. **Ensure Number Calculations Have Bulletproof Fallbacks**:
+   - All math calculations (`margin`, `deployedPct`, `totalPnl`, `chgPct`) will check for valid numbers, avoid `NaN` or `Infinity`, and fall back to `0` or `"-"`.
+
+9. **Terminal Error Boundary**:
+   - Wrap the Terminal component with a React Error Boundary so that even if an unexpected null/undefined occurs in any server environment (production, QC, UAT, beta, local), the page does not white-screen or break.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Check backend build: `npm run build` in `backend/`
+- Check frontend build: `npm run build` in `frontend/`
+- Run existing test suites: `npm test`
+
+### Manual Verification via Browser
+- Access `http://localhost:5173/terminal` and `http://localhost:5173/admin/terminal` (or equivalent URL).
+- Verify Ticker Bar loads without hardcoded prices, displaying `—` until real quotes arrive.
+- Open Watchlist, check that symbol count comes from DB (`stats`).
+- Open Depth modal for a symbol, verify depth displays real values or `-` / `0` without synthetic fake orders.
+- Open Option Chain modal, verify expiries and chain are loaded from database, without fake 2026 hardcoded dates.
+- Test selecting various instruments across NSE, NFO, MCX to confirm no page crashes or console errors.

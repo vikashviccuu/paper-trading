@@ -3,6 +3,8 @@ import { useLocation, useNavigate, useSearchParams, Link } from "react-router-do
 import { createChart, IChartApi, ISeriesApi, CandlestickData } from "lightweight-charts";
 import { Instrument, MarketAPI, OrdersAPI, PortfolioAPI, OptionsAPI, api, FullMarketQuote } from "../services/api";
 import { getSocket, Tick } from "../services/socket";
+import { useTheme } from "../store/ThemeContext";
+import ThemeSelector from "../components/ThemeSelector";
 
 const DEFAULT_INDICES = [
   { label: "NIFTY 50",  token: "256265" },
@@ -294,7 +296,7 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
 }
 
 // ── Market Depth Card (Level 2 Quotes per Kite Connect specification) ──
-function MarketDepthCard({ quote, instrument, isLight }: { quote: FullMarketQuote | null; instrument: Instrument | null; isLight?: boolean }) {
+function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null; instrument: Instrument | null; isLight?: boolean }) {
   if (!quote || !instrument) return null;
 
   const buyLevels = quote.depth?.buy || [];
@@ -303,45 +305,38 @@ function MarketDepthCard({ quote, instrument, isLight }: { quote: FullMarketQuot
   const totalSellQty = quote.sellQuantity || sellLevels.reduce((acc, s) => acc + (s.quantity || 0), 0);
 
   return (
-    <div style={{
-      background: isLight ? "#ffffff" : "rgba(15, 23, 42, 0.75)",
-      border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.08)",
-      borderRadius: 10,
-      padding: "12px 14px",
-      marginBottom: 16,
-      boxShadow: isLight ? "0 2px 8px rgba(0, 0, 0, 0.05)" : "0 4px 20px rgba(0, 0, 0, 0.35)",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, paddingBottom: 6, borderBottom: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.07)" }}>
+    <div className="t-depth-widget">
+      <div className="t-depth-widget-header">
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: isLight ? "#475569" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Market Depth (5 Levels)
           </span>
-          <span style={{ fontSize: 9, background: isLight ? "#eef2ff" : "rgba(99, 102, 241, 0.2)", color: isLight ? "#4338ca" : "#818cf8", border: isLight ? "1px solid #c7d2fe" : "none", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>
+          <span className="t-token-pill">
             LIVE
           </span>
         </div>
-        <div style={{ fontSize: 11, color: isLight ? "#64748b" : "#94a3b8" }}>
-          Vol: <span style={{ color: isLight ? "#0f172a" : "#f8fafc", fontWeight: 700 }}>{(quote.volume || 0).toLocaleString("en-IN")}</span>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          Vol: <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{(quote.volume || 0).toLocaleString("en-IN")}</span>
         </div>
       </div>
 
       {/* 5-Level Depth Columns */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="t-depth-grid-2col">
         {/* BUY BIDS */}
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: isLight ? "#0284c7" : "#38bdf8", marginBottom: 4, paddingBottom: 2, borderBottom: isLight ? "1px dashed rgba(2, 132, 199, 0.3)" : "1px dashed rgba(56, 189, 248, 0.25)" }}>
+          <div className="t-depth-col-head buy">
             <span>Orders</span>
             <span>Qty</span>
             <span>Bid</span>
           </div>
           {buyLevels.slice(0, 5).map((b, idx) => (
-            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: isLight ? "#334155" : "#e2e8f0" }}>
-              <span style={{ color: isLight ? "#94a3b8" : "#64748b", fontSize: 10 }}>{b.orders !== undefined ? b.orders : "—"}</span>
+            <div key={idx} className="t-depth-row">
+              <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{b.orders !== undefined ? b.orders : "—"}</span>
               <span>{(b.quantity || 0).toLocaleString("en-IN")}</span>
-              <span style={{ color: isLight ? "#0284c7" : "#38bdf8", fontWeight: 700 }}>{b.price ? `₹${Number(b.price).toFixed(2)}` : "—"}</span>
+              <span style={{ color: "var(--blue)", fontWeight: 700 }}>{b.price ? `₹${Number(b.price).toFixed(2)}` : "—"}</span>
             </div>
           ))}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: isLight ? "#0284c7" : "#38bdf8", marginTop: 4, paddingTop: 4, borderTop: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.08)" }}>
+          <div className="t-depth-total-row" style={{ color: "var(--blue)" }}>
             <span>Total</span>
             <span>{totalBuyQty.toLocaleString("en-IN")}</span>
             <span />
@@ -350,19 +345,19 @@ function MarketDepthCard({ quote, instrument, isLight }: { quote: FullMarketQuot
 
         {/* SELL ASKS */}
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: isLight ? "#dc2626" : "#f87171", marginBottom: 4, paddingBottom: 2, borderBottom: isLight ? "1px dashed rgba(220, 38, 38, 0.3)" : "1px dashed rgba(248, 113, 113, 0.25)" }}>
+          <div className="t-depth-col-head sell">
             <span>Offer</span>
             <span>Qty</span>
             <span>Orders</span>
           </div>
           {sellLevels.slice(0, 5).map((s, idx) => (
-            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "var(--font-mono)", padding: "2px 0", color: isLight ? "#334155" : "#e2e8f0" }}>
-              <span style={{ color: isLight ? "#dc2626" : "#f87171", fontWeight: 700 }}>{s.price ? `₹${Number(s.price).toFixed(2)}` : "—"}</span>
+            <div key={idx} className="t-depth-row">
+              <span style={{ color: "var(--red)", fontWeight: 700 }}>{s.price ? `₹${Number(s.price).toFixed(2)}` : "—"}</span>
               <span>{(s.quantity || 0).toLocaleString("en-IN")}</span>
-              <span style={{ color: isLight ? "#94a3b8" : "#64748b", fontSize: 10 }}>{s.orders !== undefined ? s.orders : "—"}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{s.orders !== undefined ? s.orders : "—"}</span>
             </div>
           ))}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: isLight ? "#dc2626" : "#f87171", marginTop: 4, paddingTop: 4, borderTop: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.08)" }}>
+          <div className="t-depth-total-row" style={{ color: "var(--red)" }}>
             <span />
             <span>{totalSellQty.toLocaleString("en-IN")}</span>
             <span>Total</span>
@@ -371,28 +366,28 @@ function MarketDepthCard({ quote, instrument, isLight }: { quote: FullMarketQuot
       </div>
 
       {/* Stats summary: VWAP, Circuit Limits, OI */}
-      <div style={{ marginTop: 10, paddingTop: 8, borderTop: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.07)", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, textAlign: "center" }}>
+      <div className="t-depth-stats-grid">
         <div>
-          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>VWAP / Avg</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: isLight ? "#0f172a" : "#f8fafc", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase" }}>VWAP / Avg</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>
             {quote.averagePrice || quote.lastPrice ? `₹${Number(quote.averagePrice || quote.lastPrice).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Lower Limit</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: isLight ? "#475569" : "#94a3b8", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase" }}>Lower Limit</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", fontFamily: "var(--font-mono)" }}>
             {quote.lowerCircuitLimit ? `₹${Number(quote.lowerCircuitLimit).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Upper Limit</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: isLight ? "#475569" : "#94a3b8", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase" }}>Upper Limit</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", fontFamily: "var(--font-mono)" }}>
             {quote.upperCircuitLimit ? `₹${Number(quote.upperCircuitLimit).toFixed(2)}` : "—"}
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>Open Interest</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: isLight ? "#0f172a" : "#cbd5e1", fontFamily: "var(--font-mono)" }}>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase" }}>Open Interest</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>
             {quote.oi !== undefined && quote.oi !== null ? Number(quote.oi).toLocaleString("en-IN") : "—"}
           </div>
         </div>
@@ -400,82 +395,6 @@ function MarketDepthCard({ quote, instrument, isLight }: { quote: FullMarketQuot
     </div>
   );
 }
-
-// ── Modern Terminal Color Themes ─────────────────────────────
-const TERMINAL_THEMES = [
-  {
-    id: "modern-white",
-    name: "Modern White",
-    desc: "Clean Pure White & Precision Blue",
-    dot: "#2563eb",
-    bg: "#f8fafc",
-    surface: "#ffffff",
-    accent: "#2563eb",
-  },
-  {
-    id: "nordic-snow",
-    name: "Nordic Snow",
-    desc: "Minimalist Studio White & Sky Cyan",
-    dot: "#0284c7",
-    bg: "#ffffff",
-    surface: "#ffffff",
-    accent: "#0284c7",
-  },
-  {
-    id: "cyber-midnight",
-    name: "Cyber Midnight",
-    desc: "Indigo & Deep Space Blue",
-    dot: "#6366f1",
-    bg: "#090d16",
-    surface: "#0e1320",
-    accent: "#6366f1",
-  },
-  {
-    id: "pure-obsidian",
-    name: "Pure Obsidian",
-    desc: "AMOLED Pitch Black & Ice Cyan",
-    dot: "#0ea5e9",
-    bg: "#020408",
-    surface: "#06090e",
-    accent: "#0ea5e9",
-  },
-  {
-    id: "bloomberg-slate",
-    name: "Bloomberg Slate",
-    desc: "Wall St Navy & Warm Amber",
-    dot: "#f59e0b",
-    bg: "#080f1e",
-    surface: "#0d172e",
-    accent: "#f59e0b",
-  },
-  {
-    id: "emerald-quant",
-    name: "Emerald Quant",
-    desc: "Matrix Pine & Mint Green",
-    dot: "#10b981",
-    bg: "#030f08",
-    surface: "#07170e",
-    accent: "#10b981",
-  },
-  {
-    id: "neon-nebula",
-    name: "Neon Nebula",
-    desc: "Velvet Purple & Violet Glow",
-    dot: "#a855f7",
-    bg: "#0c0817",
-    surface: "#120d24",
-    accent: "#a855f7",
-  },
-  {
-    id: "titanium-charcoal",
-    name: "Titanium Charcoal",
-    desc: "Minimal Carbon & Sky Blue",
-    dot: "#38bdf8",
-    bg: "#111215",
-    surface: "#17181c",
-    accent: "#38bdf8",
-  },
-];
 
 // ── Main terminal ────────────────────────────────────────────
 function Terminal() {
@@ -485,31 +404,8 @@ function Terminal() {
   const contestId = sp.get("contestId") ?? undefined;
   const isAdmin   = location.pathname.startsWith("/admin");
 
-  // Modern Theme Engine (Defaults to Modern White)
-  const [theme, setTheme] = useState<string>(() => {
-    return localStorage.getItem("terminal_theme") || "modern-white";
-  });
-  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
-  const themeMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("terminal_theme", theme);
-      document.documentElement.setAttribute("data-theme", theme);
-    } catch { }
-  }, [theme]);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
-        setThemeMenuOpen(false);
-      }
-    }
-    if (themeMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [themeMenuOpen]);
+  // Global Theme Engine
+  const { theme, setTheme, isLight } = useTheme();
 
   const [loginUrl, setLoginUrl] = useState("");
   const [dbTotalCount, setDbTotalCount] = useState<number | null>(null);
@@ -883,8 +779,6 @@ function Terminal() {
 
   const deployedPct = wallet && wallet > 0 ? Math.min(100, positions.reduce((s: number, p: any) => s + Math.abs(+p.quantity) * +(p.averagePrice ?? p.avgPrice ?? 0), 0) / wallet * 100) : 0;
   const margin      = instrument && displayLtp ? (Number(displayLtp) * qty * (instrument.lotSize || 1) * (ptype === "DELIVERY" ? 1.0 : 0.2)) : 0;
-  const currentThemeObj = TERMINAL_THEMES.find((t) => t.id === theme) || TERMINAL_THEMES[0];
-  const isLight = theme === "modern-white" || theme === "nordic-snow";
 
   return (
     <div className="t-root" data-theme={theme}>
@@ -913,56 +807,7 @@ function Terminal() {
         )}
         <div className="t-nav-right">
           {/* Theme Selector */}
-          <div className="t-theme-wrapper" ref={themeMenuRef}>
-            <button
-              type="button"
-              className="t-theme-btn"
-              onClick={() => setThemeMenuOpen((v) => !v)}
-              title="Change Terminal Theme"
-            >
-              <span
-                className="t-theme-swatch"
-                style={{ background: currentThemeObj.dot }}
-              />
-              <span>{currentThemeObj.name}</span>
-              <span style={{ fontSize: 9, opacity: 0.7 }}>▼</span>
-            </button>
-
-            {themeMenuOpen && (
-              <div className="t-theme-menu">
-                <div className="t-theme-header">
-                  <span>🎨 Terminal Theme</span>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>Modern Presets</span>
-                </div>
-                {TERMINAL_THEMES.map((t) => (
-                  <div
-                    key={t.id}
-                    className={`t-theme-item ${theme === t.id ? "active" : ""}`}
-                    onClick={() => {
-                      setTheme(t.id);
-                      setThemeMenuOpen(false);
-                    }}
-                  >
-                    <div className="t-theme-info">
-                      <span
-                        className="t-theme-swatch"
-                        style={{ background: t.dot, width: 14, height: 14 }}
-                      />
-                      <div>
-                        <div className="t-theme-name">{t.name}</div>
-                        <div className="t-theme-desc">{t.desc}</div>
-                      </div>
-                    </div>
-                    <div className="t-theme-dots">
-                      <span className="t-theme-dot" style={{ background: t.bg }} title="Base" />
-                      <span className="t-theme-dot" style={{ background: t.surface }} title="Surface" />
-                      <span className="t-theme-dot" style={{ background: t.accent }} title="Accent" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <ThemeSelector />
 
           <span className="pill pill-blue">Paper</span>
           {brokerMode === "ZERODHA" ? (
@@ -1206,15 +1051,10 @@ function Terminal() {
                   {/* Watchlist Header & Sync Button */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: isLight ? "#475569" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                         Market Watch
                       </span>
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10,
-                        background: isLight ? "#eff6ff" : "rgba(37,99,235,0.2)",
-                        color: isLight ? "#1d4ed8" : "#60a5fa",
-                        border: isLight ? "1px solid #bfdbfe" : "1px solid rgba(96,165,250,0.3)"
-                      }}>
+                      <span className="t-token-pill">
                         {dbTotalCount !== null ? `${dbTotalCount.toLocaleString()} SYMBOLS` : "— SYMBOLS"}
                       </span>
                     </div>
@@ -1222,15 +1062,7 @@ function Terminal() {
                       onClick={triggerInstrumentSync}
                       disabled={isSyncingInstruments}
                       title="Fetch & Sync all latest market instruments from Zerodha Kite (NSE, NFO, MCX)"
-                      style={{
-                        background: isLight ? "#ffffff" : "rgba(255,255,255,0.04)",
-                        border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255,255,255,0.08)",
-                        color: isSyncingInstruments ? (isLight ? "#d97706" : "#fbbf24") : (isLight ? "#475569" : "#94a3b8"),
-                        fontSize: 10, fontWeight: 700, cursor: isSyncingInstruments ? "wait" : "pointer",
-                        display: "flex", alignItems: "center", gap: 4, padding: "2px 6px", borderRadius: 5,
-                        transition: "all 0.15s ease",
-                        boxShadow: isLight ? "0 1px 2px rgba(0,0,0,0.04)" : "none"
-                      }}
+                      className="t-sync-btn"
                     >
                       <span>🔄</span>
                       {isSyncingInstruments ? "Syncing..." : "Sync All"}
@@ -1238,25 +1070,12 @@ function Terminal() {
                   </div>
 
                   {/* Segment Filter Pills */}
-                  <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                  <div className="t-seg-bar">
                     {(["ALL", "NSE", "NFO", "MCX"] as const).map((seg) => (
                       <button
                         key={seg}
                         onClick={() => { setSegmentFilter(seg); setPage(1); }}
-                        style={{
-                          flex: 1, padding: "4px 0", borderRadius: 5, border: "1px solid",
-                          borderColor: segmentFilter === seg
-                            ? (isLight ? "#93c5fd" : "rgba(96,165,250,0.4)")
-                            : (isLight ? "#e2e8f0" : "rgba(255,255,255,0.06)"),
-                          background: segmentFilter === seg
-                            ? (isLight ? "#eff6ff" : "rgba(37,99,235,0.2)")
-                            : (isLight ? "#f8fafc" : "rgba(255,255,255,0.02)"),
-                          color: segmentFilter === seg
-                            ? (isLight ? "#1d4ed8" : "#60a5fa")
-                            : (isLight ? "#64748b" : "var(--text-muted)"),
-                          fontSize: 10, fontWeight: 700, cursor: "pointer", transition: "all 0.12s",
-                          boxShadow: segmentFilter === seg && isLight ? "0 1px 2px rgba(37,99,235,0.1)" : "none"
-                        }}
+                        className={`t-seg-btn ${segmentFilter === seg ? "active" : ""}`}
                       >
                         {seg}
                       </button>
@@ -1303,7 +1122,7 @@ function Terminal() {
                       <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
                         <div style={{ flex: 1, overflowY: "auto", paddingRight: 2 }}>
                           {paginatedResults.length === 0 ? (
-                            <div style={{ padding: "30px 10px", fontSize: 12, color: isLight ? "#64748b" : "var(--text-muted)", textAlign: "center" }}>
+                            <div style={{ padding: "30px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
                               No symbols matching filter
                             </div>
                           ) : (
@@ -1319,52 +1138,12 @@ function Terminal() {
                               const isExpanded = expandedSymbolId === r.id;
                               const isNFO = r.exchange === "NFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
                               const isMCX = r.exchange === "MCX";
-
-                              const segBg = isNFO
-                                ? (isLight ? "#f3e8ff" : "rgba(168,85,247,0.15)")
-                                : isMCX
-                                ? (isLight ? "#fef3c7" : "rgba(245,158,11,0.15)")
-                                : (isLight ? "#eff6ff" : "rgba(59,130,246,0.15)");
-
-                              const segColor = isNFO
-                                ? (isLight ? "#7e22ce" : "#c084fc")
-                                : isMCX
-                                ? (isLight ? "#b45309" : "#fbbf24")
-                                : (isLight ? "#1d4ed8" : "#60a5fa");
-
-                              const segBorder = isNFO
-                                ? (isLight ? "1px solid #e9d5ff" : "1px solid rgba(168,85,247,0.3)")
-                                : isMCX
-                                ? (isLight ? "1px solid #fde68a" : "1px solid rgba(245,158,11,0.3)")
-                                : (isLight ? "1px solid #bfdbfe" : "1px solid rgba(59,130,246,0.3)");
-
-                              const cardBg = sel
-                                ? (isLight ? "#eff6ff" : "rgba(37, 99, 235, 0.14)")
-                                : (isLight ? "#ffffff" : "rgba(255, 255, 255, 0.02)");
-
-                              const cardBorder = sel
-                                ? (isLight ? "1px solid #93c5fd" : "1px solid rgba(96, 165, 250, 0.4)")
-                                : (isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.05)");
-
-                              const cardBorderLeft = sel
-                                ? (isLight ? "3px solid #2563eb" : "3px solid #3b82f6")
-                                : "3px solid transparent";
-
-                              const cardShadow = isLight
-                                ? (sel ? "0 2px 6px rgba(37, 99, 235, 0.12)" : "0 1px 3px rgba(0, 0, 0, 0.04)")
-                                : "none";
+                              const tagClass = isNFO ? "nfo" : isMCX ? "mcx" : "nse";
 
                               return (
                                 <div
                                   key={r.id}
-                                  style={{
-                                    borderRadius: 8, marginBottom: 6, overflow: "hidden",
-                                    background: cardBg,
-                                    border: cardBorder,
-                                    borderLeft: cardBorderLeft,
-                                    boxShadow: cardShadow,
-                                    transition: "all 0.15s ease"
-                                  }}
+                                  className={`t-sym-card ${sel ? "selected" : ""}`}
                                 >
                                   {/* Main Row Header */}
                                   <div
@@ -1378,22 +1157,22 @@ function Terminal() {
                                     }}
                                   >
                                     <div style={{ minWidth: 0, flex: 1, paddingRight: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                                      <span style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
+                                      <span style={{ fontSize: 10, color: "var(--text-muted)", transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
                                         ▶
                                       </span>
                                       <div>
                                         <div style={{
                                           fontWeight: 800, fontSize: 13,
-                                          color: isLight ? "#0f172a" : "#f8fafc",
+                                          color: "var(--text-primary)",
                                           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
                                         }}>
                                           {r.tradingSymbol}
                                         </div>
                                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                                          <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: segBg, color: segColor, border: segBorder }}>
+                                          <span className={`t-sym-tag ${tagClass}`}>
                                             {r.exchange}
                                           </span>
-                                          <span style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", fontWeight: 500 }}>
+                                          <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>
                                             {r.segment}
                                           </span>
                                         </div>
@@ -1403,26 +1182,21 @@ function Terminal() {
                                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                                       <div style={{
                                         fontWeight: 800, fontSize: 13, fontFamily: "var(--font-mono)",
-                                        color: ltp > 0
-                                          ? (isLight ? (up ? "#16a34a" : "#dc2626") : (up ? "#4ade80" : "#f87171"))
-                                          : (isLight ? "#64748b" : "var(--text-secondary)")
+                                        color: ltp > 0 ? (up ? "var(--green)" : "var(--red)") : "var(--text-secondary)"
                                       }}>
                                         {ltp > 0 ? `₹${ltp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                                       </div>
                                       <div style={{
                                         fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700,
-                                        color: isLight ? (up ? "#16a34a" : "#dc2626") : (up ? "#4ade80" : "#f87171"),
+                                        color: up ? "var(--green)" : "var(--red)",
                                         marginTop: 1
                                       }}>
                                         {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
                                       </div>
                                       <div style={{
                                         fontSize: 9, fontFamily: "var(--font-mono)",
-                                        color: isLight ? "#475569" : "#94a3b8",
-                                        marginTop: 2,
-                                        background: isLight ? "#f1f5f9" : "rgba(255, 255, 255, 0.05)",
-                                        border: isLight ? "1px solid #e2e8f0" : "none",
-                                        padding: "1px 5px", borderRadius: 3
+                                        color: "var(--text-muted)",
+                                        marginTop: 2
                                       }}>
                                         Close: ₹{close > 0 ? close.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                                       </div>
@@ -1433,23 +1207,23 @@ function Terminal() {
                                   {isExpanded && (
                                     <div style={{
                                       padding: "8px 10px 10px",
-                                      background: isLight ? "#f8fafc" : "rgba(0, 0, 0, 0.25)",
-                                      borderTop: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.05)",
+                                      background: "var(--bg-elevated)",
+                                      borderTop: "1px solid var(--border)",
                                       display: "flex", flexDirection: "column", gap: 6
                                     }}>
                                       {/* Quick Price Summary Bar */}
                                       <div style={{
                                         display: "flex", justifyContent: "space-between", alignItems: "center",
                                         padding: "5px 8px",
-                                        background: isLight ? "#ffffff" : "rgba(255, 255, 255, 0.03)",
-                                        border: isLight ? "1px solid #e2e8f0" : "none",
+                                        background: "var(--bg-surface)",
+                                        border: "1px solid var(--border)",
                                         borderRadius: 5,
                                         fontSize: 10, fontFamily: "var(--font-mono)",
-                                        color: isLight ? "#334155" : "#cbd5e1"
+                                        color: "var(--text-secondary)"
                                       }}>
-                                        <span>Last: <strong style={{ color: isLight ? (up ? "#16a34a" : "#dc2626") : (up ? "#4ade80" : "#f87171") }}>₹{ltp.toFixed(2)}</strong></span>
-                                        <span>Last Close: <strong style={{ color: isLight ? "#0f172a" : "#f8fafc" }}>₹{close.toFixed(2)}</strong></span>
-                                        <span style={{ color: isLight ? (up ? "#16a34a" : "#dc2626") : (up ? "#4ade80" : "#f87171"), fontWeight: 700 }}>
+                                        <span>Last: <strong style={{ color: up ? "var(--green)" : "var(--red)" }}>₹{ltp.toFixed(2)}</strong></span>
+                                        <span>Close: <strong style={{ color: "var(--text-primary)" }}>₹{close.toFixed(2)}</strong></span>
+                                        <span style={{ color: up ? "var(--green)" : "var(--red)", fontWeight: 700 }}>
                                           {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
                                         </span>
                                       </div>
@@ -1483,14 +1257,8 @@ function Terminal() {
                                         <button
                                           title="View Option Chain"
                                           onClick={(e) => { e.stopPropagation(); setChainItem(r); }}
-                                          style={{
-                                            flex: 1,
-                                            background: isLight ? "#fffbeb" : "rgba(245, 158, 11, 0.15)",
-                                            border: isLight ? "1px solid #fcd34d" : "1px solid rgba(245, 158, 11, 0.35)",
-                                            color: isLight ? "#b45309" : "#fbbf24",
-                                            borderRadius: 5, padding: "5px 4px",
-                                            fontSize: 10, fontWeight: 700, cursor: "pointer", textAlign: "center"
-                                          }}
+                                          className="app-btn-outline"
+                                          style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
                                         >
                                           ⛓️ Option Chain
                                         </button>
@@ -1498,14 +1266,8 @@ function Terminal() {
                                         <button
                                           title="View Market Depth (Level 2)"
                                           onClick={(e) => { e.stopPropagation(); setDepthItem(r); }}
-                                          style={{
-                                            flex: 1,
-                                            background: isLight ? "#f0f9ff" : "rgba(56, 189, 248, 0.15)",
-                                            border: isLight ? "1px solid #bae6fd" : "1px solid rgba(56, 189, 248, 0.35)",
-                                            color: isLight ? "#0369a1" : "#38bdf8",
-                                            borderRadius: 5, padding: "5px 4px",
-                                            fontSize: 10, fontWeight: 700, cursor: "pointer", textAlign: "center"
-                                          }}
+                                          className="app-btn-outline"
+                                          style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
                                         >
                                           📖 Depth
                                         </button>
@@ -1513,14 +1275,8 @@ function Terminal() {
                                         <button
                                           title="View Historical Market Data"
                                           onClick={(e) => { e.stopPropagation(); setHistoryItem(r); }}
-                                          style={{
-                                            flex: 1,
-                                            background: isLight ? "#eef2ff" : "rgba(99, 102, 241, 0.15)",
-                                            border: isLight ? "1px solid #c7d2fe" : "1px solid rgba(99, 102, 241, 0.35)",
-                                            color: isLight ? "#4338ca" : "#818cf8",
-                                            borderRadius: 5, padding: "5px 4px",
-                                            fontSize: 10, fontWeight: 700, cursor: "pointer", textAlign: "center"
-                                          }}
+                                          className="app-btn-outline"
+                                          style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
                                         >
                                           📊 History
                                         </button>
@@ -1543,39 +1299,21 @@ function Terminal() {
                             <button
                               onClick={() => setPage((p) => Math.max(p - 1, 1))}
                               disabled={page === 1}
-                              style={{
-                                padding: "4px 10px", borderRadius: 5,
-                                border: isLight ? "1px solid #cbd5e1" : "1px solid var(--border)",
-                                background: isLight
-                                  ? (page === 1 ? "#f1f5f9" : "#ffffff")
-                                  : (page === 1 ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.06)"),
-                                color: isLight
-                                  ? (page === 1 ? "#94a3b8" : "#0f172a")
-                                  : (page === 1 ? "var(--text-muted)" : "#f8fafc"),
-                                fontSize: 11, fontWeight: 700, cursor: page === 1 ? "not-allowed" : "pointer"
-                              }}
+                              className="app-btn-outline"
+                              style={{ padding: "4px 10px", fontSize: 11, opacity: page === 1 ? 0.4 : 1 }}
                             >
                               ← Prev
                             </button>
 
-                            <span style={{ fontSize: 10, fontWeight: 700, color: isLight ? "#64748b" : "var(--text-muted)" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>
                               Page {page} of {totalPages} ({filteredResults.length})
                             </span>
 
                             <button
                               onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
                               disabled={page === totalPages}
-                              style={{
-                                padding: "4px 10px", borderRadius: 5,
-                                border: isLight ? "1px solid #cbd5e1" : "1px solid var(--border)",
-                                background: isLight
-                                  ? (page === totalPages ? "#f1f5f9" : "#ffffff")
-                                  : (page === totalPages ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.06)"),
-                                color: isLight
-                                  ? (page === totalPages ? "#94a3b8" : "#0f172a")
-                                  : (page === totalPages ? "var(--text-muted)" : "#f8fafc"),
-                                fontSize: 11, fontWeight: 700, cursor: page === totalPages ? "not-allowed" : "pointer"
-                              }}
+                              className="app-btn-outline"
+                              style={{ padding: "4px 10px", fontSize: 11, opacity: page === totalPages ? 0.4 : 1 }}
                             >
                               Next →
                             </button>
@@ -1618,7 +1356,7 @@ function Terminal() {
                           className={`t-pos-card ${isProfit ? "profit" : "loss"}`}
                           onClick={() => p.instrument && setInstrument(p.instrument)}
                         >
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div className="t-pos-header">
                             <div>
                               <div className="t-pos-sym">{p.instrument?.tradingSymbol ?? "—"}</div>
                               <div className="t-pos-meta">Qty {p.quantity} · Avg ₹{avgPrice.toFixed(2)} ({p.productType})</div>
@@ -1627,13 +1365,13 @@ function Terminal() {
                               <div className={`t-pos-pnl ${isProfit ? "profit" : "loss"}`}>
                                 {isProfit ? "+" : ""}₹{pnl.toFixed(2)}
                               </div>
-                              <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: isProfit ? "#4ade80" : "#f87171" }}>
+                              <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: isProfit ? "var(--green)" : "var(--red)" }}>
                                 {isProfit ? "+" : ""}{pnlPct.toFixed(2)}%
                               </div>
                             </div>
                           </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, paddingTop: 4, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                            <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+                          <div className="t-pos-footer">
+                            <span className="t-pos-ltp">
                               LTP: ₹{curPrice.toFixed(2)} · Close: ₹{closePrice.toFixed(2)}
                             </span>
                             <button
@@ -1645,11 +1383,7 @@ function Terminal() {
                                 setOtype("MARKET");
                                 setQty(Math.abs(p.quantity));
                               }}
-                              style={{
-                                background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)",
-                                color: "#f87171", borderRadius: 4, padding: "2px 8px", fontSize: 10,
-                                fontWeight: 700, cursor: "pointer"
-                              }}
+                              className="t-pos-sq-btn"
                             >
                               Square Off
                             </button>
@@ -1671,27 +1405,22 @@ function Terminal() {
                         return (
                           <div
                             key={`closed-${p.id || i}`}
-                            style={{
-                              background: isLight ? "#ffffff" : "rgba(255,255,255,0.02)",
-                              border: isLight ? "1px solid #e2e8f0" : "1px solid var(--border)",
-                              boxShadow: isLight ? "0 1px 3px rgba(0,0,0,0.04)" : "none",
-                              borderRadius: 8, padding: "8px 10px", marginBottom: 6, opacity: 0.95
-                            }}
+                            className="t-closed-card"
                           >
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                               <div>
-                                <div style={{ fontWeight: 700, fontSize: 12, color: isLight ? "#0f172a" : "#f8fafc" }}>
-                                  {p.instrument?.tradingSymbol ?? "—"} <span style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)" }}>({p.productType})</span>
+                                <div style={{ fontWeight: 700, fontSize: 12, color: "var(--text-primary)" }}>
+                                  {p.instrument?.tradingSymbol ?? "—"} <span style={{ fontSize: 10, color: "var(--text-muted)" }}>({p.productType})</span>
                                 </div>
-                                <div style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", marginTop: 2 }}>
-                                  Entry: ₹{Number(p.avgPrice).toFixed(2)} · <span style={{ color: isLight ? "#4f46e5" : "#a5b4fc", fontWeight: 600 }}>Squared Off</span>
+                                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                                  Entry: ₹{Number(p.avgPrice).toFixed(2)} · <span style={{ color: "var(--accent)", fontWeight: 600 }}>Squared Off</span>
                                 </div>
                               </div>
                               <div style={{ textAlign: "right" }}>
-                                <div style={{ fontSize: 12, fontWeight: 800, fontFamily: "var(--font-mono)", color: isProfit ? (isLight ? "#16a34a" : "#4ade80") : (isLight ? "#dc2626" : "#f87171") }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, fontFamily: "var(--font-mono)", color: isProfit ? "var(--green)" : "var(--red)" }}>
                                   {isProfit ? "+" : ""}₹{pnl.toFixed(2)}
                                 </div>
-                                <div style={{ fontSize: 9, fontWeight: 700, color: isLight ? "#64748b" : "var(--text-muted)", textTransform: "uppercase" }}>
+                                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
                                   Realized
                                 </div>
                               </div>
@@ -1719,7 +1448,7 @@ function Terminal() {
                       }, 0);
                       const pnl = totalVal - totalInvested;
                       return (
-                        <div style={{ fontSize: 10, fontWeight: 800, color: pnl >= 0 ? "#4ade80" : "#f87171", background: pnl >= 0 ? "rgba(74, 222, 128, 0.1)" : "rgba(248, 113, 113, 0.1)", padding: "2px 6px", borderRadius: 4 }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: pnl >= 0 ? "var(--green)" : "var(--red)", background: pnl >= 0 ? "var(--green-bg)" : "var(--red-bg)", padding: "2px 6px", borderRadius: 4 }}>
                           P&amp;L: {pnl >= 0 ? "+" : ""}₹{pnl.toFixed(2)}
                         </div>
                       );
@@ -1747,36 +1476,30 @@ function Terminal() {
                       return (
                         <div
                           key={h.id || i}
-                          style={{
-                            background: isLight ? "#ffffff" : "rgba(255,255,255,0.02)",
-                            border: isLight ? "1px solid #e2e8f0" : "1px solid var(--border)",
-                            boxShadow: isLight ? "0 1px 3px rgba(0,0,0,0.04)" : "none",
-                            borderRadius: 8, padding: "10px 12px", marginBottom: 8, cursor: "pointer",
-                            transition: "all 0.15s ease"
-                          }}
+                          className="t-holding-card"
                           onClick={() => h.instrument && setInstrument(h.instrument)}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                             <div>
-                              <div style={{ fontWeight: 800, fontSize: 13, color: isLight ? "#0f172a" : "#f8fafc" }}>
+                              <div className="t-holding-sym">
                                 {h.instrument?.tradingSymbol ?? "—"}
                               </div>
-                              <div style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", marginTop: 2 }}>
+                              <div className="t-holding-meta">
                                 Qty {h.quantity} · Avg ₹{avgPrice.toFixed(2)}
                               </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "var(--font-mono)", color: isLight ? "#0f172a" : "#f8fafc" }}>
+                              <div className="t-holding-val">
                                 ₹{currentValue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                               </div>
-                              <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "var(--font-mono)", color: isProfit ? (isLight ? "#16a34a" : "#4ade80") : (isLight ? "#dc2626" : "#f43f5e"), marginTop: 2 }}>
+                              <div className={`t-holding-pnl ${isProfit ? "profit" : "loss"}`}>
                                 {isProfit ? "+" : ""}₹{pnl.toFixed(2)} ({isProfit ? "+" : ""}{pnlPct.toFixed(2)}%)
                               </div>
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingTop: 6, borderTop: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255,255,255,0.05)" }}>
-                            <span style={{ fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                          <div className="t-holding-footer">
+                            <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                               LTP: ₹{curPrice.toFixed(2)} · Close: ₹{closePrice.toFixed(2)}
                             </span>
                             <button
@@ -1788,13 +1511,7 @@ function Terminal() {
                                 setOtype("MARKET");
                                 setQty(h.quantity);
                               }}
-                              style={{
-                                background: isLight ? "#fef2f2" : "rgba(239, 68, 68, 0.15)",
-                                border: isLight ? "1px solid #fecaca" : "1px solid rgba(239, 68, 68, 0.35)",
-                                color: isLight ? "#dc2626" : "#f87171",
-                                borderRadius: 4, padding: "2px 8px", fontSize: 10,
-                                fontWeight: 700, cursor: "pointer"
-                              }}
+                              className="t-holding-exit-btn"
                             >
                               Exit / Sell
                             </button>
@@ -1820,24 +1537,19 @@ function Terminal() {
                     orders.slice(0, 15).map((o: any, i: number) => (
                       <div
                         key={i}
-                        style={{
-                          background: isLight ? "#ffffff" : "rgba(255,255,255,0.02)",
-                          border: isLight ? "1px solid #e2e8f0" : "1px solid var(--border)",
-                          boxShadow: isLight ? "0 1px 3px rgba(0,0,0,0.04)" : "none",
-                          borderRadius: 8, padding: "8px 10px", marginBottom: 6
-                        }}
+                        className="t-order-card"
                       >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontWeight: 700, fontSize: 12, color: isLight ? "#0f172a" : "#f8fafc" }}>
+                          <span className="t-order-sym">
                             {o.instrument?.tradingSymbol ?? "—"}
                           </span>
                           <span className={`tag ${o.transactionType === "BUY" ? "tag-buy" : "tag-sell"}`}>
                             {o.transactionType}
                           </span>
                         </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: isLight ? "#64748b" : "var(--text-muted)", marginTop: 4 }}>
+                        <div className="t-order-detail">
                           <span>Qty: {o.quantity} @ ₹{Number(o.price || o.averagePrice || 0).toFixed(2)}</span>
-                          <span style={{ fontWeight: 700, color: o.status === "COMPLETE" ? (isLight ? "#16a34a" : "#4ade80") : (isLight ? "#dc2626" : "#f43f5e") }}>
+                          <span style={{ fontWeight: 700, color: o.status === "COMPLETE" ? "var(--green)" : "var(--red)" }}>
                             {o.status}
                           </span>
                         </div>
@@ -1868,17 +1580,7 @@ function Terminal() {
                     </span>
                   )}
                   {displayClose !== null && (
-                    <span style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#94a3b8",
-                      marginLeft: 8,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                      background: "rgba(255, 255, 255, 0.05)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      fontFamily: "var(--font-mono)"
-                    }}>
+                    <span className="t-chip-close">
                       Last Close: ₹{Number(displayClose).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   )}
@@ -1995,33 +1697,24 @@ function Terminal() {
             </div>
 
             {instrument && (
-              <div style={{
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid rgba(255, 255, 255, 0.07)",
-                borderRadius: 8,
-                padding: "8px 12px",
-                marginBottom: 12,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center"
-              }}>
+              <div className="t-stat-card" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Last Price (LTP)</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "var(--font-mono)", color: up ? "#4ade80" : "#f87171" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "var(--font-mono)", color: up ? "var(--green)" : "var(--red)" }}>
                     ₹{(displayLtp ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   {chg !== null && (
-                    <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700, color: up ? "#4ade80" : "#f87171" }}>
+                    <div style={{ fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700, color: up ? "var(--green)" : "var(--red)" }}>
                       {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{chgPct?.toFixed(2)}%)
                     </div>
                   )}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Last Close Price</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-mono)", color: "#cbd5e1" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
                     ₹{(displayClose ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
-                  <div style={{ fontSize: 10, color: marketStatus?.isOpen ? "#4ade80" : "#f87171", fontWeight: 700, marginTop: 1 }}>
+                  <div style={{ fontSize: 10, color: marketStatus?.isOpen ? "var(--green)" : "var(--red)", fontWeight: 700, marginTop: 1 }}>
                     {marketStatus?.isOpen ? "● Market Open" : "○ Market Closed"}
                   </div>
                 </div>
@@ -2078,16 +1771,7 @@ function Terminal() {
               </div>
 
               {marketStatus && !marketStatus.isOpen && (
-                <div style={{
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.35)",
-                  borderRadius: 6,
-                  padding: "8px 10px",
-                  margin: "8px 0 10px",
-                  fontSize: 11,
-                  color: "#fca5a5",
-                  lineHeight: 1.4,
-                }}>
+                <div className="t-market-banner">
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 800 }}>
                     <span>⛔</span> Market Closed
                   </div>
@@ -2131,47 +1815,36 @@ function Terminal() {
 
       {/* ══ HISTORICAL DATA MODAL ══ */}
       {historyItem && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 1000,
-          background: isLight ? "rgba(15, 23, 42, 0.45)" : "rgba(0, 0, 0, 0.78)", backdropFilter: "blur(10px)",
-          display: "flex", alignItems: "center", justifyContent: "center", padding: 16
-        }} onClick={() => setHistoryItem(null)}>
-          <div style={{
-            width: "100%", maxWidth: 840, maxHeight: "90vh",
-            background: isLight ? "#ffffff" : "rgba(13, 17, 28, 0.98)",
-            border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(99, 102, 241, 0.35)",
-            borderRadius: 16, padding: "24px 28px",
-            boxShadow: isLight ? "0 25px 50px -12px rgba(0,0,0,0.15)" : "0 25px 60px rgba(0,0,0,0.85)",
-            display: "flex", flexDirection: "column", overflow: "hidden"
-          }} onClick={(e) => e.stopPropagation()}>
+        <div className="t-modal-overlay" onClick={() => setHistoryItem(null)}>
+          <div className="t-modal-card" onClick={(e) => e.stopPropagation()}>
             
             {/* Modal Header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, borderBottom: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255,255,255,0.08)", paddingBottom: 14 }}>
+            <div className="t-modal-header">
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <h2 style={{ fontSize: 20, fontWeight: 900, color: isLight ? "#0f172a" : "#f8fafc", margin: 0 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 900, color: "var(--text-primary)", margin: 0 }}>
                     {historyItem.tradingSymbol}
                   </h2>
-                  <span style={{ padding: "2px 8px", borderRadius: 4, background: "rgba(99, 102, 241, 0.2)", border: "1px solid rgba(99, 102, 241, 0.4)", color: "#a5b4fc", fontSize: 11, fontWeight: 700 }}>
+                  <span style={{ padding: "2px 8px", borderRadius: 4, background: "rgba(99, 102, 241, 0.15)", border: "1px solid var(--border)", color: "var(--accent)", fontSize: 11, fontWeight: 700 }}>
                     {historyItem.exchange} · {historyItem.segment}
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                   Historical Market Data &amp; OHLC Candlestick Summary
                 </div>
               </div>
 
               {/* Timeframe selector & Close */}
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ display: "flex", background: "rgba(255,255,255,0.06)", borderRadius: 8, padding: 3, border: "1px solid rgba(255,255,255,0.1)" }}>
+                <div style={{ display: "flex", background: "var(--bg-elevated)", borderRadius: 8, padding: 3, border: "1px solid var(--border)" }}>
                   {[["day", "1D"], ["15minute", "15m"], ["5minute", "5m"], ["minute", "1m"]].map(([v, l]) => (
                     <button
                       key={v}
                       onClick={() => setHistoryTf(v as any)}
                       style={{
                         padding: "4px 12px", borderRadius: 6, border: "none",
-                        background: historyTf === v ? "linear-gradient(135deg, #4f46e5, #6366f1)" : "transparent",
-                        color: historyTf === v ? "#fff" : "#94a3b8",
+                        background: historyTf === v ? "linear-gradient(135deg, #2563eb, #3b82f6)" : "transparent",
+                        color: historyTf === v ? "#fff" : "var(--text-secondary)",
                         fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.15s"
                       }}
                     >
@@ -2182,7 +1855,8 @@ function Terminal() {
                 
                 <button
                   onClick={() => setHistoryItem(null)}
-                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8", width: 32, height: 32, borderRadius: "50%", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}
+                  className="app-btn-outline"
+                  style={{ width: 32, height: 32, borderRadius: "50%", padding: 0, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                   ✕
                 </button>
@@ -2202,27 +1876,27 @@ function Terminal() {
 
               return (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 }}>
-                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "#64748b", fontWeight: 700, letterSpacing: "0.05em" }}>Period High</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#38bdf8", marginTop: 4, fontFamily: "var(--font-mono)" }}>
+                  <div className="t-stat-card">
+                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.05em" }}>Period High</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--blue)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
                       {periodHigh ? `₹${periodHigh.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"}
                     </div>
                   </div>
-                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "#64748b", fontWeight: 700, letterSpacing: "0.05em" }}>Period Low</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#f43f5e", marginTop: 4, fontFamily: "var(--font-mono)" }}>
+                  <div className="t-stat-card">
+                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.05em" }}>Period Low</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--red)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
                       {periodLow ? `₹${periodLow.toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—"}
                     </div>
                   </div>
-                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "#64748b", fontWeight: 700, letterSpacing: "0.05em" }}>Period Change</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: periodChg >= 0 ? "#4ade80" : "#f43f5e", marginTop: 4, fontFamily: "var(--font-mono)" }}>
+                  <div className="t-stat-card">
+                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.05em" }}>Period Change</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: periodChg >= 0 ? "var(--green)" : "var(--red)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
                       {periodChg >= 0 ? "+" : ""}{periodChg.toFixed(2)} ({periodChg >= 0 ? "+" : ""}{periodPct.toFixed(2)}%)
                     </div>
                   </div>
-                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "12px 14px" }}>
-                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "#64748b", fontWeight: 700, letterSpacing: "0.05em" }}>Total Candles</div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "#e2e8f0", marginTop: 4, fontFamily: "var(--font-mono)" }}>
+                  <div className="t-stat-card">
+                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.05em" }}>Total Candles</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
                       {historyData.length} records
                     </div>
                   </div>
@@ -2231,25 +1905,25 @@ function Terminal() {
             })()}
 
             {/* Historical Data Table */}
-            <div style={{ flex: 1, overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, background: "rgba(0,0,0,0.2)" }}>
+            <div className="t-modal-table-wrap">
               {historyLoading ? (
-                <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+                <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
                   ⏳ Fetching historical market records...
                 </div>
               ) : historyData.length === 0 ? (
-                <div style={{ padding: 40, textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
                   No historical records returned for this symbol timeframe.
                 </div>
               ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead style={{ position: "sticky", top: 0, background: "#0f172a", borderBottom: "1px solid rgba(255,255,255,0.1)", zIndex: 2 }}>
+                <table className="t-modal-table">
+                  <thead>
                     <tr>
-                      <th style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Date / Time</th>
-                      <th style={{ padding: "10px 14px", textAlign: "right", fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Open (₹)</th>
-                      <th style={{ padding: "10px 14px", textAlign: "right", fontSize: 11, color: "#38bdf8", fontWeight: 700 }}>High (₹)</th>
-                      <th style={{ padding: "10px 14px", textAlign: "right", fontSize: 11, color: "#f43f5e", fontWeight: 700 }}>Low (₹)</th>
-                      <th style={{ padding: "10px 14px", textAlign: "right", fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Close (₹)</th>
-                      <th style={{ padding: "10px 14px", textAlign: "right", fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Change</th>
+                      <th style={{ textAlign: "left" }}>Date / Time</th>
+                      <th>Open (₹)</th>
+                      <th style={{ color: "var(--blue)" }}>High (₹)</th>
+                      <th style={{ color: "var(--red)" }}>Low (₹)</th>
+                      <th>Close (₹)</th>
+                      <th>Change</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2263,13 +1937,13 @@ function Terminal() {
                       });
 
                       return (
-                        <tr key={idx} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)", transition: "background 0.1s" }}>
-                          <td style={{ padding: "9px 14px", fontSize: 12, color: "#cbd5e1", fontFamily: "var(--font-mono)" }}>{dateStr}</td>
-                          <td style={{ padding: "9px 14px", textAlign: "right", fontSize: 12, color: "#e2e8f0", fontFamily: "var(--font-mono)" }}>₹{open.toFixed(2)}</td>
-                          <td style={{ padding: "9px 14px", textAlign: "right", fontSize: 12, color: "#38bdf8", fontWeight: 600, fontFamily: "var(--font-mono)" }}>₹{Number(row.high || 0).toFixed(2)}</td>
-                          <td style={{ padding: "9px 14px", textAlign: "right", fontSize: 12, color: "#f43f5e", fontWeight: 600, fontFamily: "var(--font-mono)" }}>₹{Number(row.low || 0).toFixed(2)}</td>
-                          <td style={{ padding: "9px 14px", textAlign: "right", fontSize: 12, color: "#e2e8f0", fontWeight: 700, fontFamily: "var(--font-mono)" }}>₹{close.toFixed(2)}</td>
-                          <td style={{ padding: "9px 14px", textAlign: "right", fontSize: 12, fontWeight: 700, color: chg >= 0 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)" }}>
+                        <tr key={idx}>
+                          <td style={{ textAlign: "left", color: "var(--text-secondary)" }}>{dateStr}</td>
+                          <td>₹{open.toFixed(2)}</td>
+                          <td style={{ color: "var(--blue)", fontWeight: 600 }}>₹{Number(row.high || 0).toFixed(2)}</td>
+                          <td style={{ color: "var(--red)", fontWeight: 600 }}>₹{Number(row.low || 0).toFixed(2)}</td>
+                          <td style={{ fontWeight: 700 }}>₹{close.toFixed(2)}</td>
+                          <td style={{ fontWeight: 700, color: chg >= 0 ? "var(--green)" : "var(--red)" }}>
                             {chg >= 0 ? "+" : ""}{chg.toFixed(2)} ({chg >= 0 ? "+" : ""}{chgPct.toFixed(2)}%)
                           </td>
                         </tr>
@@ -2281,7 +1955,7 @@ function Terminal() {
             </div>
 
             {/* Modal Actions Footer */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
               <button
                 onClick={() => {
                   setInstrument(historyItem);
@@ -2289,7 +1963,7 @@ function Terminal() {
                 }}
                 style={{
                   padding: "9px 18px", borderRadius: 8, border: "none",
-                  background: "linear-gradient(135deg, #2563eb, #4f46e5)", color: "#fff",
+                  background: "linear-gradient(135deg, #2563eb, #3b82f6)", color: "#fff",
                   fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "0 4px 14px rgba(37, 99, 235, 0.4)"
                 }}
               >
@@ -2298,11 +1972,8 @@ function Terminal() {
 
               <button
                 onClick={() => setHistoryItem(null)}
-                style={{
-                  padding: "9px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.05)", color: "#94a3b8",
-                  fontWeight: 700, fontSize: 12, cursor: "pointer"
-                }}
+                className="app-btn-outline"
+                style={{ padding: "9px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700 }}
               >
                 Close
               </button>
@@ -2330,49 +2001,39 @@ function Terminal() {
         const spread = (bestAsk && bestBid) ? (bestAsk - bestBid).toFixed(2) : "—";
 
         return (
-          <div style={{
-            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-            background: isLight ? "rgba(15, 23, 42, 0.45)" : "rgba(3, 7, 18, 0.82)", backdropFilter: "blur(8px)",
-            zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center",
-            padding: 20
-          }}>
-            <div style={{
-              background: isLight ? "#ffffff" : "#0f172a",
-              border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.12)",
-              borderRadius: 16, width: "100%", maxWidth: 640, overflow: "hidden",
-              boxShadow: isLight ? "0 25px 50px -12px rgba(0, 0, 0, 0.15)" : "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
-              display: "flex", flexDirection: "column"
-            }}>
+          <div className="t-modal-overlay" onClick={() => setDepthItem(null)}>
+            <div className="t-modal-card" style={{ maxWidth: 640, padding: 0 }} onClick={(e) => e.stopPropagation()}>
               {/* Header */}
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "16px 20px", borderBottom: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.08)",
-                background: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.02)"
+                padding: "16px 20px", borderBottom: "1px solid var(--border)",
+                background: "var(--bg-elevated)"
               }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 18, fontWeight: 800, color: isLight ? "#0f172a" : "#f8fafc", letterSpacing: "-0.01em" }}>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
                       {depthItem.tradingSymbol}
                     </span>
-                    <span style={{ fontSize: 11, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
+                    <span className="t-token-pill">
                       {depthItem.exchange} · {depthItem.segment}
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                     Level 2 Real-Time Order Depth
                   </div>
                 </div>
 
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: "#38bdf8", fontFamily: "var(--font-mono)" }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "var(--blue)", fontFamily: "var(--font-mono)" }}>
                     {liveP > 0 ? `₹${liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                   </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
                     Last Close: {closeP > 0 ? `₹${closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                   </div>
                   <button
                     onClick={() => setDepthItem(null)}
-                    style={{ background: "none", border: "none", color: "#64748b", fontSize: 18, cursor: "pointer", padding: "0 4px", marginTop: 2 }}
+                    className="app-btn-outline"
+                    style={{ width: 26, height: 26, borderRadius: "50%", padding: 0, fontSize: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 4 }}
                   >
                     ✕
                   </button>
@@ -2380,26 +2041,26 @@ function Terminal() {
               </div>
 
               {/* Buy / Sell Liquidity Meter Bar */}
-              <div style={{ padding: "14px 20px", background: "rgba(0,0,0,0.15)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <div style={{ padding: "14px 20px", background: "var(--bg-base)", borderBottom: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
-                  <span style={{ color: "#4ade80" }}>BUY {buyPct}% ({totalBidQty.toLocaleString()} Qty)</span>
-                  <span style={{ color: "#f43f5e" }}>SELL {sellPct}% ({totalAskQty.toLocaleString()} Qty)</span>
+                  <span style={{ color: "var(--green)" }}>BUY {buyPct}% ({totalBidQty.toLocaleString()} Qty)</span>
+                  <span style={{ color: "var(--red)" }}>SELL {sellPct}% ({totalAskQty.toLocaleString()} Qty)</span>
                 </div>
-                <div style={{ height: 6, borderRadius: 3, background: "rgba(244, 63, 94, 0.4)", overflow: "hidden", display: "flex" }}>
-                  <div style={{ width: `${buyPct}%`, background: "linear-gradient(90deg, #16a34a, #4ade80)", transition: "width 0.3s" }} />
+                <div style={{ height: 6, borderRadius: 3, background: "var(--red-bg)", border: "1px solid var(--red-border)", overflow: "hidden", display: "flex" }}>
+                  <div style={{ width: `${buyPct}%`, background: "linear-gradient(90deg, #16a34a, #22c55e)", transition: "width 0.3s" }} />
                 </div>
               </div>
 
               {/* Depth Grid (Bids vs Asks) */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "rgba(255,255,255,0.08)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "var(--border)" }}>
                 {/* Bids Column */}
-                <div style={{ background: "#0f172a", padding: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid rgba(74, 222, 128, 0.2)" }}>
+                <div className="t-depth-side-col">
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid var(--green-border)" }}>
                     Bids (Buyers)
                   </div>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
-                      <tr style={{ color: "#64748b", fontSize: 10, textAlign: "left" }}>
+                      <tr style={{ color: "var(--text-muted)", fontSize: 10, textAlign: "left" }}>
                         <th style={{ padding: "4px 2px", fontWeight: 700 }}>Orders</th>
                         <th style={{ padding: "4px 2px", fontWeight: 700, textAlign: "right" }}>Qty</th>
                         <th style={{ padding: "4px 2px", fontWeight: 700, textAlign: "right" }}>Price (₹)</th>
@@ -2408,35 +2069,35 @@ function Terminal() {
                     <tbody>
                       {buyLevels.length === 0 ? (
                         <tr>
-                          <td colSpan={3} style={{ padding: "16px 2px", textAlign: "center", color: "#64748b" }}>
+                          <td colSpan={3} style={{ padding: "16px 2px", textAlign: "center", color: "var(--text-muted)" }}>
                             {depthLoading ? "Loading depth..." : "No bid depth available"}
                           </td>
                         </tr>
                       ) : (
                         buyLevels.slice(0, 5).map((b, i) => (
-                          <tr key={i} style={{ background: "rgba(34, 197, 94, 0.04)" }}>
-                            <td style={{ padding: "6px 2px", color: "#94a3b8", fontFamily: "var(--font-mono)" }}>{b.orders !== undefined ? b.orders : "—"}</td>
-                            <td style={{ padding: "6px 2px", color: "#cbd5e1", textAlign: "right", fontFamily: "var(--font-mono)" }}>{(b.quantity || 0).toLocaleString()}</td>
-                            <td style={{ padding: "6px 2px", color: "#4ade80", fontWeight: 700, textAlign: "right", fontFamily: "var(--font-mono)" }}>{b.price ? `₹${Number(b.price).toFixed(2)}` : "—"}</td>
+                          <tr key={i} style={{ background: "var(--green-bg)" }}>
+                            <td style={{ padding: "6px 2px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{b.orders !== undefined ? b.orders : "—"}</td>
+                            <td style={{ padding: "6px 2px", color: "var(--text-secondary)", textAlign: "right", fontFamily: "var(--font-mono)" }}>{(b.quantity || 0).toLocaleString()}</td>
+                            <td style={{ padding: "6px 2px", color: "var(--green)", fontWeight: 700, textAlign: "right", fontFamily: "var(--font-mono)" }}>{b.price ? `₹${Number(b.price).toFixed(2)}` : "—"}</td>
                           </tr>
                         ))
                       )}
                     </tbody>
                   </table>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 11, fontWeight: 700 }}>
-                    <span style={{ color: "#94a3b8" }}>Total Bid Qty</span>
-                    <span style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{totalBidQty.toLocaleString()}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 6, borderTop: "1px solid var(--border)", fontSize: 11, fontWeight: 700 }}>
+                    <span style={{ color: "var(--text-muted)" }}>Total Bid Qty</span>
+                    <span style={{ color: "var(--green)", fontFamily: "var(--font-mono)" }}>{totalBidQty.toLocaleString()}</span>
                   </div>
                 </div>
 
                 {/* Asks Column */}
-                <div style={{ background: "#0f172a", padding: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "#f43f5e", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid rgba(244, 63, 94, 0.2)" }}>
+                <div className="t-depth-side-col">
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid var(--red-border)" }}>
                     Asks (Sellers)
                   </div>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
-                      <tr style={{ color: "#64748b", fontSize: 10, textAlign: "left" }}>
+                      <tr style={{ color: "var(--text-muted)", fontSize: 10, textAlign: "left" }}>
                         <th style={{ padding: "4px 2px", fontWeight: 700 }}>Price (₹)</th>
                         <th style={{ padding: "4px 2px", fontWeight: 700, textAlign: "right" }}>Qty</th>
                         <th style={{ padding: "4px 2px", fontWeight: 700, textAlign: "right" }}>Orders</th>
@@ -2445,52 +2106,52 @@ function Terminal() {
                     <tbody>
                       {sellLevels.length === 0 ? (
                         <tr>
-                          <td colSpan={3} style={{ padding: "16px 2px", textAlign: "center", color: "#64748b" }}>
+                          <td colSpan={3} style={{ padding: "16px 2px", textAlign: "center", color: "var(--text-muted)" }}>
                             {depthLoading ? "Loading depth..." : "No ask depth available"}
                           </td>
                         </tr>
                       ) : (
                         sellLevels.slice(0, 5).map((a, i) => (
-                          <tr key={i} style={{ background: "rgba(239, 68, 68, 0.04)" }}>
-                            <td style={{ padding: "6px 2px", color: "#f43f5e", fontWeight: 700, fontFamily: "var(--font-mono)" }}>{a.price ? `₹${Number(a.price).toFixed(2)}` : "—"}</td>
-                            <td style={{ padding: "6px 2px", color: "#cbd5e1", textAlign: "right", fontFamily: "var(--font-mono)" }}>{(a.quantity || 0).toLocaleString()}</td>
-                            <td style={{ padding: "6px 2px", color: "#94a3b8", textAlign: "right", fontFamily: "var(--font-mono)" }}>{a.orders !== undefined ? a.orders : "—"}</td>
+                          <tr key={i} style={{ background: "var(--red-bg)" }}>
+                            <td style={{ padding: "6px 2px", color: "var(--red)", fontWeight: 700, fontFamily: "var(--font-mono)" }}>{a.price ? `₹${Number(a.price).toFixed(2)}` : "—"}</td>
+                            <td style={{ padding: "6px 2px", color: "var(--text-secondary)", textAlign: "right", fontFamily: "var(--font-mono)" }}>{(a.quantity || 0).toLocaleString()}</td>
+                            <td style={{ padding: "6px 2px", color: "var(--text-muted)", textAlign: "right", fontFamily: "var(--font-mono)" }}>{a.orders !== undefined ? a.orders : "—"}</td>
                           </tr>
                         ))
                       )}
                     </tbody>
                   </table>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 11, fontWeight: 700 }}>
-                    <span style={{ color: "#94a3b8" }}>Total Ask Qty</span>
-                    <span style={{ color: "#f43f5e", fontFamily: "var(--font-mono)" }}>{totalAskQty.toLocaleString()}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 6, borderTop: "1px solid var(--border)", fontSize: 11, fontWeight: 700 }}>
+                    <span style={{ color: "var(--text-muted)" }}>Total Ask Qty</span>
+                    <span style={{ color: "var(--red)", fontFamily: "var(--font-mono)" }}>{totalAskQty.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
 
               {/* Circuit Limits & Info */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: 14, background: "rgba(0,0,0,0.2)" }}>
-                <div style={{ background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)" }}>
-                  <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Lower Circuit</div>
-                  <div style={{ fontSize: 13, color: "#f43f5e", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
+              <div className="t-depth-circuits">
+                <div className="t-stat-card">
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Lower Circuit</div>
+                  <div style={{ fontSize: 13, color: "var(--red)", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
                     {lowerCircuit ? `₹${Number(lowerCircuit).toFixed(2)}` : "—"}
                   </div>
                 </div>
-                <div style={{ background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)" }}>
-                  <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Upper Circuit</div>
-                  <div style={{ fontSize: 13, color: "#4ade80", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                <div className="t-stat-card">
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Upper Circuit</div>
+                  <div style={{ fontSize: 13, color: "var(--green)", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
                     {upperCircuit ? `₹${Number(upperCircuit).toFixed(2)}` : "—"}
                   </div>
                 </div>
-                <div style={{ background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.05)" }}>
-                  <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Spread</div>
-                  <div style={{ fontSize: 13, color: "#38bdf8", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                <div className="t-stat-card">
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Spread</div>
+                  <div style={{ fontSize: 13, color: "var(--blue)", fontWeight: 700, fontFamily: "var(--font-mono)", marginTop: 2 }}>
                     {spread !== "—" ? `₹${spread}` : "—"}
                   </div>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: "flex", gap: 10, padding: "14px 20px", borderTop: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+              <div style={{ display: "flex", gap: 10, padding: "14px 20px", borderTop: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
                 <button
                   onClick={() => {
                     setInstrument(depthItem);
@@ -2521,10 +2182,8 @@ function Terminal() {
                 </button>
                 <button
                   onClick={() => setDepthItem(null)}
-                  style={{
-                    padding: "10px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.05)", color: "#94a3b8", fontWeight: 700, fontSize: 12, cursor: "pointer"
-                  }}
+                  className="app-btn-outline"
+                  style={{ padding: "10px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700 }}
                 >
                   Close
                 </button>
@@ -2544,38 +2203,27 @@ function Terminal() {
         const sentiment = pcr > 1.2 ? "BULLISH" : (pcr < 0.8 && pcr > 0) ? "BEARISH" : "NEUTRAL";
 
         return (
-          <div style={{
-            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-            background: isLight ? "rgba(15, 23, 42, 0.45)" : "rgba(3, 7, 18, 0.85)", backdropFilter: "blur(10px)",
-            zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center",
-            padding: 20
-          }}>
-            <div style={{
-              background: isLight ? "#ffffff" : "#0d1117",
-              border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.12)",
-              borderRadius: 16, width: "100%", maxWidth: 1100, maxHeight: "90vh", overflow: "hidden",
-              boxShadow: isLight ? "0 25px 50px -12px rgba(0,0,0,0.15)" : "0 25px 60px rgba(0,0,0,0.8)",
-              display: "flex", flexDirection: "column"
-            }}>
+          <div className="t-modal-overlay" onClick={() => setChainItem(null)}>
+            <div className="t-modal-card" style={{ maxWidth: 1100, padding: 0 }} onClick={(e) => e.stopPropagation()}>
               {/* Header */}
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "16px 22px", borderBottom: isLight ? "1px solid #f1f5f9" : "1px solid rgba(255, 255, 255, 0.08)",
-                background: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.02)"
+                padding: "16px 22px", borderBottom: "1px solid var(--border)",
+                background: "var(--bg-elevated)"
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 18, fontWeight: 800, color: isLight ? "#0f172a" : "#f8fafc" }}>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>
                         {chainItem.tradingSymbol} Option Chain
                       </span>
-                      <span style={{ fontSize: 10, background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
+                      <span style={{ fontSize: 10, background: "var(--yellow-bg)", color: "var(--yellow)", border: "1px solid var(--yellow-border)", padding: "2px 8px", borderRadius: 12, fontWeight: 700 }}>
                         {chainItem.exchange} · OPTIONS
                       </span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3, display: "flex", alignItems: "center", gap: 14 }}>
-                      <span>Spot LTP: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{liveP > 0 ? `₹${liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
-                      <span>Last Close: <strong style={{ color: isLight ? "#64748b" : "#cbd5e1", fontFamily: "var(--font-mono)" }}>{closeP > 0 ? `₹${closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, display: "flex", alignItems: "center", gap: 14 }}>
+                      <span>Spot LTP: <strong style={{ color: "var(--green)", fontFamily: "var(--font-mono)" }}>{liveP > 0 ? `₹${liveP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
+                      <span>Last Close: <strong style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{closeP > 0 ? `₹${closeP.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -2583,31 +2231,26 @@ function Terminal() {
                 {/* Expiry Selector & Close */}
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>Expiry:</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Expiry:</span>
                     {chainExpiries.length > 0 ? (
                       <select
                         value={chainExpiry}
                         onChange={(e) => setChainExpiry(e.target.value)}
-                        style={{
-                          background: isLight ? "#f8fafc" : "#161b22",
-                          border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255,255,255,0.15)",
-                          color: isLight ? "#0f172a" : "#f8fafc",
-                          padding: "6px 12px", borderRadius: 6,
-                          fontSize: 12, fontWeight: 700, outline: "none", cursor: "pointer"
-                        }}
+                        className="t-chain-select"
                       >
                         {chainExpiries.map((exp) => (
                           <option key={exp} value={exp}>{exp}</option>
                         ))}
                       </select>
                     ) : (
-                      <span style={{ fontSize: 11, color: "#64748b" }}>No expiries in DB</span>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>No expiries in DB</span>
                     )}
                   </div>
 
                   <button
                     onClick={() => setChainItem(null)}
-                    style={{ background: "none", border: "none", color: "#64748b", fontSize: 20, cursor: "pointer", padding: "0 4px" }}
+                    className="app-btn-outline"
+                    style={{ width: 30, height: 30, borderRadius: "50%", padding: 0, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}
                   >
                     ✕
                   </button>
@@ -2618,60 +2261,61 @@ function Terminal() {
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "10px 22px",
-                background: isLight ? "#f8fafc" : "rgba(0,0,0,0.25)",
-                borderBottom: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255,255,255,0.06)",
+                background: "var(--bg-base)",
+                borderBottom: "1px solid var(--border)",
                 fontSize: 11, fontWeight: 700
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                  <span style={{ color: "#94a3b8" }}>
-                    Put-Call Ratio (PCR): <strong style={{ color: pcr >= 1 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)" }}>{pcr > 0 ? pcr : "—"}</strong>
+                  <span style={{ color: "var(--text-muted)" }}>
+                    Put-Call Ratio (PCR): <strong style={{ color: pcr >= 1 ? "var(--green)" : "var(--red)", fontFamily: "var(--font-mono)" }}>{pcr > 0 ? pcr : "—"}</strong>
                   </span>
                   {pcr > 0 && (
                     <span style={{
                       padding: "2px 8px", borderRadius: 4, fontSize: 10,
-                      background: sentiment === "BULLISH" ? "rgba(34, 197, 94, 0.15)" : sentiment === "BEARISH" ? "rgba(239, 68, 68, 0.15)" : "rgba(148, 163, 184, 0.15)",
-                      color: sentiment === "BULLISH" ? "#4ade80" : sentiment === "BEARISH" ? "#f43f5e" : "#cbd5e1"
+                      background: sentiment === "BULLISH" ? "var(--green-bg)" : sentiment === "BEARISH" ? "var(--red-bg)" : "var(--bg-elevated)",
+                      color: sentiment === "BULLISH" ? "var(--green)" : sentiment === "BEARISH" ? "var(--red)" : "var(--text-secondary)",
+                      border: `1px solid ${sentiment === "BULLISH" ? "var(--green-border)" : sentiment === "BEARISH" ? "var(--red-border)" : "var(--border)"}`
                     }}>
                       {sentiment} SENTIMENT
                     </span>
                   )}
                 </div>
 
-                <div style={{ color: "#94a3b8", display: "flex", gap: 20 }}>
-                  <span>Total Call OI: <strong style={{ color: "#4ade80", fontFamily: "var(--font-mono)" }}>{totalCallOI > 0 ? totalCallOI.toLocaleString() : "—"}</strong></span>
-                  <span>Total Put OI: <strong style={{ color: "#f43f5e", fontFamily: "var(--font-mono)" }}>{totalPutOI > 0 ? totalPutOI.toLocaleString() : "—"}</strong></span>
+                <div style={{ color: "var(--text-muted)", display: "flex", gap: 20 }}>
+                  <span>Total Call OI: <strong style={{ color: "var(--green)", fontFamily: "var(--font-mono)" }}>{totalCallOI > 0 ? totalCallOI.toLocaleString() : "—"}</strong></span>
+                  <span>Total Put OI: <strong style={{ color: "var(--red)", fontFamily: "var(--font-mono)" }}>{totalPutOI > 0 ? totalPutOI.toLocaleString() : "—"}</strong></span>
                 </div>
               </div>
 
               {/* Option Chain Table Header (CALLS | STRIKE | PUTS) */}
-              <div style={{ flex: 1, overflowY: "auto" }}>
+              <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-surface)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                  <thead style={{ position: "sticky", top: 0, background: isLight ? "#f8fafc" : "#0d1117", zIndex: 5 }}>
-                    <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.1)", textTransform: "uppercase", fontSize: 10, letterSpacing: "0.05em" }}>
-                      <th colSpan={6} style={{ padding: "8px 12px", textAlign: "center", color: "#4ade80", borderRight: "1px solid rgba(255,255,255,0.1)" }}>
+                  <thead style={{ position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 5 }}>
+                    <tr style={{ borderBottom: "1px solid var(--border)", textTransform: "uppercase", fontSize: 10, letterSpacing: "0.05em" }}>
+                      <th colSpan={6} style={{ padding: "8px 12px", textAlign: "center", color: "var(--green)", borderRight: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
                         CALLS (CE)
                       </th>
-                      <th colSpan={1} style={{ padding: "8px 12px", textAlign: "center", color: "#fbbf24", background: "rgba(245, 158, 11, 0.15)", borderRight: "1px solid rgba(255,255,255,0.1)" }}>
+                      <th colSpan={1} style={{ padding: "8px 12px", textAlign: "center", color: "var(--yellow)", background: "var(--yellow-bg)", borderRight: "1px solid var(--border)" }}>
                         STRIKE
                       </th>
-                      <th colSpan={6} style={{ padding: "8px 12px", textAlign: "center", color: "#f43f5e" }}>
+                      <th colSpan={6} style={{ padding: "8px 12px", textAlign: "center", color: "var(--red)", background: "var(--bg-elevated)" }}>
                         PUTS (PE)
                       </th>
                     </tr>
-                    <tr style={{ color: "#64748b", borderBottom: "1px solid rgba(255,255,255,0.08)", fontSize: 10 }}>
+                    <tr style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)", fontSize: 10, background: "var(--bg-elevated)" }}>
                       {/* Calls Headers */}
                       <th style={{ padding: "6px 8px", textAlign: "left" }}>Action</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>OI</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Volume</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>IV %</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Chg %</th>
-                      <th style={{ padding: "6px 8px", textAlign: "right", color: "#4ade80", borderRight: "1px solid rgba(255,255,255,0.1)" }}>LTP (₹)</th>
+                      <th style={{ padding: "6px 8px", textAlign: "right", color: "var(--green)", borderRight: "1px solid var(--border)" }}>LTP (₹)</th>
 
                       {/* Strike Header */}
-                      <th style={{ padding: "6px 12px", textAlign: "center", color: "#fbbf24", background: "rgba(245, 158, 11, 0.1)", borderRight: "1px solid rgba(255,255,255,0.1)" }}>Price (₹)</th>
+                      <th style={{ padding: "6px 12px", textAlign: "center", color: "var(--yellow)", background: "var(--yellow-bg)", borderRight: "1px solid var(--border)" }}>Price (₹)</th>
 
                       {/* Puts Headers */}
-                      <th style={{ padding: "6px 8px", textAlign: "left", color: "#f43f5e" }}>LTP (₹)</th>
+                      <th style={{ padding: "6px 8px", textAlign: "left", color: "var(--red)" }}>LTP (₹)</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Chg %</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>IV %</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Volume</th>
@@ -2682,13 +2326,13 @@ function Terminal() {
                   <tbody>
                     {chainLoading ? (
                       <tr>
-                        <td colSpan={13} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>
+                        <td colSpan={13} style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
                           ⏳ Loading option contracts from database...
                         </td>
                       </tr>
                     ) : chainRows.length === 0 ? (
                       <tr>
-                        <td colSpan={13} style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
+                        <td colSpan={13} style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
                           No option contracts found in database for {chainItem.tradingSymbol}{chainExpiry ? ` (${chainExpiry})` : ""}.
                         </td>
                       </tr>
@@ -2700,15 +2344,15 @@ function Terminal() {
                         const isATM = liveP > 0 && Math.abs(strike - liveP) < 50;
                         const isCallITM = liveP > 0 && strike < liveP;
                         const isPutITM = liveP > 0 && strike > liveP;
-                        const callBg = isCallITM ? "rgba(34, 197, 94, 0.08)" : "transparent";
-                        const putBg = isPutITM ? "rgba(239, 68, 68, 0.08)" : "transparent";
-                        const strikeBg = isATM ? "rgba(234, 179, 8, 0.25)" : "#161b22";
+                        const callBg = isCallITM ? "var(--green-bg)" : "transparent";
+                        const putBg = isPutITM ? "var(--red-bg)" : "transparent";
+                        const strikeBg = isATM ? "var(--yellow-bg)" : "var(--bg-elevated)";
 
                         return (
                           <tr
                             key={strike}
                             style={{
-                              borderBottom: isATM ? "2px solid #eab308" : "1px solid rgba(255,255,255,0.03)",
+                              borderBottom: isATM ? "2px solid var(--yellow)" : "1px solid var(--border)",
                               transition: "background 0.1s"
                             }}
                           >
@@ -2730,8 +2374,8 @@ function Terminal() {
                                     setChainItem(null);
                                   }}
                                   style={{
-                                    padding: "2px 6px", borderRadius: 4, border: "none",
-                                    background: "rgba(34, 197, 94, 0.2)", color: "#4ade80",
+                                    padding: "2px 6px", borderRadius: 4, border: "1px solid var(--green-border)",
+                                    background: "var(--green-bg)", color: "var(--green)",
                                     fontWeight: 700, fontSize: 10, cursor: "pointer"
                                   }}
                                 >
@@ -2739,45 +2383,45 @@ function Terminal() {
                                 </button>
                               ) : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#94a3b8", fontFamily: "var(--font-mono)", background: callBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "var(--text-secondary)", fontFamily: "var(--font-mono)", background: callBg }}>
                               {row.call?.oi !== undefined && row.call?.oi !== null ? Number(row.call.oi).toLocaleString() : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#64748b", fontFamily: "var(--font-mono)", background: callBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "var(--text-muted)", fontFamily: "var(--font-mono)", background: callBg }}>
                               {row.call?.volume !== undefined && row.call?.volume !== null ? Number(row.call.volume).toLocaleString() : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#cbd5e1", fontFamily: "var(--font-mono)", background: callBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "var(--text-secondary)", fontFamily: "var(--font-mono)", background: callBg }}>
                               {row.call?.iv ? `${Number(row.call.iv).toFixed(1)}%` : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: (row.call?.netChange || 0) >= 0 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)", background: callBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: (row.call?.netChange || 0) >= 0 ? "var(--green)" : "var(--red)", fontFamily: "var(--font-mono)", background: callBg }}>
                               {row.call?.changePercent !== undefined ? `${Number(row.call.changePercent).toFixed(2)}%` : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800, color: "#4ade80", fontFamily: "var(--font-mono)", background: callBg, borderRight: "1px solid rgba(255,255,255,0.1)" }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800, color: "var(--green)", fontFamily: "var(--font-mono)", background: callBg, borderRight: "1px solid var(--border)" }}>
                               {callLtp > 0 ? `₹${callLtp.toFixed(2)}` : "—"}
                             </td>
 
                             {/* Strike Price Column */}
                             <td style={{
                               padding: "7px 12px", textAlign: "center", fontWeight: 800,
-                              color: isATM ? "#fbbf24" : (isLight ? "#0f172a" : "#f8fafc"), background: strikeBg,
-                              fontFamily: "var(--font-mono)", borderRight: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255,255,255,0.1)"
+                              color: isATM ? "var(--yellow)" : "var(--text-primary)", background: strikeBg,
+                              fontFamily: "var(--font-mono)", borderRight: "1px solid var(--border)"
                             }}>
-                              {strike} {isATM && <span style={{ fontSize: 9, background: "#eab308", color: "#000", padding: "1px 4px", borderRadius: 3, marginLeft: 4, fontWeight: 900 }}>ATM</span>}
+                              {strike} {isATM && <span style={{ fontSize: 9, background: "var(--yellow)", color: "#000", padding: "1px 4px", borderRadius: 3, marginLeft: 4, fontWeight: 900 }}>ATM</span>}
                             </td>
 
                             {/* Puts Data */}
-                            <td style={{ padding: "7px 8px", textAlign: "left", fontWeight: 800, color: "#f43f5e", fontFamily: "var(--font-mono)", background: putBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "left", fontWeight: 800, color: "var(--red)", fontFamily: "var(--font-mono)", background: putBg }}>
                               {putLtp > 0 ? `₹${putLtp.toFixed(2)}` : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: (row.put?.netChange || 0) >= 0 ? "#4ade80" : "#f43f5e", fontFamily: "var(--font-mono)", background: putBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: (row.put?.netChange || 0) >= 0 ? "var(--green)" : "var(--red)", fontFamily: "var(--font-mono)", background: putBg }}>
                               {row.put?.changePercent !== undefined ? `${Number(row.put.changePercent).toFixed(2)}%` : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#cbd5e1", fontFamily: "var(--font-mono)", background: putBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "var(--text-secondary)", fontFamily: "var(--font-mono)", background: putBg }}>
                               {row.put?.iv ? `${Number(row.put.iv).toFixed(1)}%` : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#64748b", fontFamily: "var(--font-mono)", background: putBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "var(--text-muted)", fontFamily: "var(--font-mono)", background: putBg }}>
                               {row.put?.volume !== undefined && row.put?.volume !== null ? Number(row.put.volume).toLocaleString() : "—"}
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#94a3b8", fontFamily: "var(--font-mono)", background: putBg }}>
+                            <td style={{ padding: "7px 8px", textAlign: "right", color: "var(--text-secondary)", fontFamily: "var(--font-mono)", background: putBg }}>
                               {row.put?.oi !== undefined && row.put?.oi !== null ? Number(row.put.oi).toLocaleString() : "—"}
                             </td>
                             <td style={{ padding: "7px 8px", textAlign: "right", background: putBg }}>
@@ -2797,8 +2441,8 @@ function Terminal() {
                                     setChainItem(null);
                                   }}
                                   style={{
-                                    padding: "2px 6px", borderRadius: 4, border: "none",
-                                    background: "rgba(239, 68, 68, 0.2)", color: "#f43f5e",
+                                    padding: "2px 6px", borderRadius: 4, border: "1px solid var(--red-border)",
+                                    background: "var(--red-bg)", color: "var(--red)",
                                     fontWeight: 700, fontSize: 10, cursor: "pointer"
                                   }}
                                 >
@@ -2815,17 +2459,15 @@ function Terminal() {
               </div>
 
               {/* Footer Actions */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 22px", borderTop: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
-                <span style={{ fontSize: 11, color: "#64748b" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 22px", borderTop: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   💡 Click <strong>BUY CE</strong> or <strong>BUY PE</strong> on any strike to immediately load the option contract into the Order Form.
                 </span>
 
                 <button
                   onClick={() => setChainItem(null)}
-                  style={{
-                    padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.05)", color: "#94a3b8", fontWeight: 700, fontSize: 12, cursor: "pointer"
-                  }}
+                  className="app-btn-outline"
+                  style={{ padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700 }}
                 >
                   Close Option Chain
                 </button>
@@ -2861,20 +2503,21 @@ class TerminalErrorBoundary extends React.Component<{ children: React.ReactNode 
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          background: "#080b12",
-          color: "#f8fafc",
+          background: "var(--bg-base)",
+          color: "var(--text-primary)",
           padding: 24,
           textAlign: "center"
         }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#f87171", marginBottom: 8 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: "var(--red)", marginBottom: 8 }}>
             Trading Terminal Temporary State Notice
           </h2>
-          <p style={{ color: "#94a3b8", maxWidth: 520, fontSize: 13, lineHeight: 1.5, marginBottom: 20 }}>
+          <p style={{ color: "var(--text-muted)", maxWidth: 520, fontSize: 13, lineHeight: 1.5, marginBottom: 20 }}>
             The terminal encountered an unexpected response format while loading market data. The interface was protected from crashing.
           </p>
           <button
             onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            className="app-btn-outline"
             style={{
               background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
               color: "#fff",

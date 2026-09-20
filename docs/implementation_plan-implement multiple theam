@@ -1,0 +1,52 @@
+# Implementation Plan: Modern Multi-Theme System & CSS Overhaul for Trading Terminal
+
+Add a comprehensive, modern theme engine to both `/terminal` and `/admin/terminal` (`Trade.tsx`), enabling traders to choose between multiple curated dark themes (Cyber Midnight, Pure Obsidian, Bloomberg Slate, Emerald Quant, Neon Nebula, and Titanium Charcoal) with persistent preferences and glassmorphic modern UI styling.
+
+## User Review Required
+
+> [!NOTE]
+> The theme picker is placed directly in the top header bar of the Terminal (`🎨 Theme`) so traders can switch themes seamlessly without leaving the page. Theme preference is persisted in `localStorage`.
+
+---
+
+## Proposed Changes
+
+### Component: Frontend Design System & Theme Styles
+#### [MODIFY] [global.css](file:///d:/python-pron/paper-trading-platform/frontend/src/styles/global.css)
+- Define CSS custom properties for 6 curated modern themes:
+  - **`cyber-midnight`** (Default): Deep oceanic dark (`#090d16`), electric blue/indigo accents.
+  - **`pure-obsidian`**: Ultra deep pitch black (`#04060a`), ice cyan glows (`#06b6d4`).
+  - **`bloomberg-slate`**: Wall street institutional navy (`#0a101d`), amber gold accents (`#f59e0b`).
+  - **`emerald-quant`**: Quantitative hedge fund theme (`#05120b`), emerald/mint neon (`#10b981`).
+  - **`neon-nebula`**: Modern web3/crypto theme (`#0c0915`), velvet violet/purple glow (`#a855f7`).
+  - **`titanium-charcoal`**: Minimalist matte carbon (`#111215`), cool slate accents (`#64748b`).
+- Add glassmorphism variables: `--glass-bg`, `--glass-border`, `--glass-shadow`, `--card-glow`.
+- Modernize terminal components:
+  - `.t-nav`, `.t-ticker`, `.t-sidebar`, `.t-main`, `.t-chart-bar`, `.t-orders`, `.t-risk`, `.t-ticket`.
+  - Rounded pill tabs, refined active states, subtle border gradients, and polished scrollbars.
+
+---
+
+### Component: Terminal Page & Theme Selector UI
+#### [MODIFY] [Trade.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/Trade.tsx)
+- Add theme state management (`theme`, `setTheme`) with `localStorage.getItem("terminal_theme") || "cyber-midnight"`.
+- Add an interactive `ThemeSelector` dropdown in the top navigation bar:
+  - Interactive palette modal / dropdown with color swatches.
+  - Preview swatch dots for background, surface, and accent colors.
+  - Quick 1-click switcher with immediate visual feedback.
+- Replace any hardcoded inline background colors (`background: "#080b12"`, etc.) with CSS theme variables (`var(--bg-base)`, `var(--bg-surface)`, `var(--border)`).
+- Apply `data-theme={theme}` to `.t-root` container.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Run `npm run build` in `frontend/` to ensure 0 TypeScript or JSX errors.
+- Run `npm run build` in `backend/` to verify consistency.
+
+### Manual Verification
+- Open `http://localhost:5174/terminal` and `http://localhost:5174/admin/terminal`.
+- Switch through each of the 6 themes (Cyber Midnight, Pure Obsidian, Bloomberg Slate, Emerald Quant, Neon Nebula, Titanium Charcoal).
+- Verify all panels (Ticker bar, Watchlist, Candlestick Chart, Order Ticket, Risk Manager, Orders Table, Market Depth, Option Chain) adapt seamlessly.
+- Reload page to confirm chosen theme is retained from `localStorage`.

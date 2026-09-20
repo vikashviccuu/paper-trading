@@ -328,17 +328,17 @@ export default function Signup() {
           <form onSubmit={onVerifySubmit}>
             {/* Email OTP Card */}
             <div style={{
-              background: "#161b22",
-              border: "1px solid #30363d",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
               borderRadius: 10,
               padding: "14px 16px",
               marginBottom: 14,
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#e6edf3", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 6 }}>
                   <span>📧</span> Email Verification Code
                 </span>
-                <span style={{ fontSize: 11, color: "#8b949e" }}>{email}</span>
+                <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{email}</span>
               </div>
               <input
                 className="auth-input"
@@ -354,17 +354,17 @@ export default function Signup() {
 
             {/* Mobile OTP Card (MSG91 SMS) */}
             <div style={{
-              background: "#161b22",
-              border: "1px solid #30363d",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
               borderRadius: 10,
               padding: "14px 16px",
               marginBottom: 18,
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#e6edf3", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 6 }}>
                   <span>📱</span> Mobile SMS Code (MSG91)
                 </span>
-                <span style={{ fontSize: 11, color: "#3fb950", fontWeight: 600 }}>+91 {phone}</span>
+                <span style={{ fontSize: 11, color: "var(--green)", fontWeight: 600 }}>+91 {phone}</span>
               </div>
               <input
                 className="auth-input"
