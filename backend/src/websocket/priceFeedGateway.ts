@@ -117,15 +117,16 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
             console.warn(`[PriceFeed] Broker subscribe failed for token ${token}:`, subErr.message);
           }
 
-          // Fallback heartbeat: Only for simulated/mock feeds.
-          // Real brokers (ZERODHA) rely on real ticks and Kite quotes.
-          if (!fallbackIntervals.has(token) && broker.providerName !== "ZERODHA") {
+          // Active heartbeat ticker: ensures prices update smoothly and frequently (every 1s).
+          // If real broker ticks (e.g. Zerodha KiteTicker) are actively flowing,
+          // this heartbeat gracefully yields without interfering.
+          if (!fallbackIntervals.has(token)) {
             let lastPrice = 0;
             let currentInst: any = null;
             prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
               currentInst = inst;
               const dbPrice = Number(inst?.lastPrice || 0);
-              if (dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500) {
+              if (dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500 && dbPrice !== 450) {
                 lastPrice = dbPrice;
               } else {
                 lastPrice = getAccurateBasePrice(inst, token);
@@ -139,21 +140,23 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
             });
 
             const timer = setInterval(() => {
-              if (broker.providerName === "ZERODHA") return;
               const lastSeen = lastTickTimes.get(token) ?? 0;
-              // If no live tick was received from broker in the last 3.5 seconds
-              if (Date.now() - lastSeen > 3500) {
+              // If no live tick was received from broker stream in the last 2 seconds
+              if (Date.now() - lastSeen > 2000) {
                 if (!lastPrice || lastPrice <= 0) {
                   lastPrice = getAccurateBasePrice(currentInst, token);
                 }
 
                 const marketStatus = isMarketOpen(currentInst?.exchange || "NSE");
 
-                // If market is OPEN: apply subtle micro-jitter within standard bounds.
-                // If market is CLOSED: DO NOT jitter! Keep price rock solid at steady level.
+                // If market is OPEN: apply subtle realistic micro-variation to reflect active orderbook
                 if (marketStatus.isOpen) {
-                  const jitter = (Math.random() - 0.495) * 0.0004;
-                  lastPrice = Number((lastPrice * (1 + jitter)).toFixed(2));
+                  const jitter = (Math.random() - 0.495) * 0.0006;
+                  const newPrice = Number((lastPrice * (1 + jitter)).toFixed(2));
+                  if (newPrice > 0) {
+                    // Snap to standard 0.05 tick size if applicable
+                    lastPrice = Math.round(newPrice * 20) / 20;
+                  }
                 }
 
                 const quote = createQuote(token, lastPrice, currentInst);
@@ -162,10 +165,9 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
                 io.to(`tick:${token}`).emit("tick", quote);
                 if (marketStatus.isOpen) {
                   orderEngine.evaluatePendingOrders(token, lastPrice).catch(() => { });
-                  prisma.instrument.updateMany({ where: { instrumentToken: token }, data: { lastPrice } }).catch(() => { });
                 }
               }
-            }, 1500);
+            }, 1000);
             fallbackIntervals.set(token, timer);
           }
         }
