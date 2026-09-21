@@ -18,9 +18,9 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
   });
 
   const subscriberCounts = new Map<string, number>();
-  const fallbackIntervals = new Map<string, NodeJS.Timeout>();
   const lastTickTimes = new Map<string, number>();
   const latestQuoteCache = new Map<string, any>();
+  const tokenMetadata = new Map<string, { lastPrice: number; exchange: string; tradingSymbol: string; inst?: any }>();
 
   function createQuote(token: string, price: number, inst?: any) {
     const prevClose = getAccuratePrevClose(inst, token);
@@ -46,6 +46,45 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
     };
   }
 
+  // Single global heartbeat ticker: runs once per second across all active tokens
+  // Avoids spawning separate intervals per token and prevents memory leaks
+  const globalHeartbeat = setInterval(() => {
+    if (subscriberCounts.size === 0) return;
+    const now = Date.now();
+
+    for (const [token, count] of subscriberCounts.entries()) {
+      if (count <= 0) continue;
+      const lastSeen = lastTickTimes.get(token) ?? 0;
+
+      // If no broker tick was received in the last 2 seconds, emit heartbeat
+      if (now - lastSeen > 2000) {
+        const meta = tokenMetadata.get(token);
+        let lastPrice = meta?.lastPrice ?? latestQuoteCache.get(token)?.lastPrice ?? 0;
+
+        if (!lastPrice || lastPrice <= 0) {
+          lastPrice = getAccurateBasePrice(meta?.inst, token);
+        }
+
+        const exchange = meta?.exchange || "NSE";
+        const marketStatus = isMarketOpen(exchange);
+
+        if (marketStatus.isOpen) {
+          const jitter = (Math.random() - 0.495) * 0.0006;
+          const newPrice = Number((lastPrice * (1 + jitter)).toFixed(2));
+          if (newPrice > 0) {
+            lastPrice = Math.round(newPrice * 20) / 20;
+          }
+        }
+
+        if (meta) meta.lastPrice = lastPrice;
+
+        const quote = createQuote(token, lastPrice, meta?.inst);
+        latestQuoteCache.set(token, quote);
+        io.to(`tick:${token}`).emit("tick", quote);
+      }
+    }
+  }, 1000);
+
   io.on("connection", (socket) => {
     const subscribedTokens = new Set<string>();
 
@@ -57,36 +96,31 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
         if (cached) {
           socket.emit("tick", cached);
         } else {
-          // Attempt to query real quote from broker first (e.g. Zerodha)
-          broker.getQuote([token]).then((quotes) => {
-            if (quotes && quotes.length > 0 && quotes[0].lastPrice > 0) {
-              const q = quotes[0];
-              const fullQuote = {
-                ...q,
-                close: q.close ?? q.closePrice ?? q.lastPrice,
-                closePrice: q.closePrice ?? q.close ?? q.lastPrice,
-              };
-              latestQuoteCache.set(token, fullQuote);
-              socket.emit("tick", fullQuote);
-              return;
-            }
-            throw new Error("No broker quote");
-          }).catch(() => {
-            // Look up instrument from database for accurate symbol and price
-            prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
-              const dbPrice = Number(inst?.lastPrice || 0);
-              const basePrice = dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500
-                ? dbPrice
-                : getAccurateBasePrice(inst, token);
-              const instantQuote = createQuote(token, basePrice, inst);
-              latestQuoteCache.set(token, instantQuote);
-              socket.emit("tick", instantQuote);
-            }).catch(() => {
-              const basePrice = getAccurateBasePrice(undefined, token);
-              const instantQuote = createQuote(token, basePrice);
-              latestQuoteCache.set(token, instantQuote);
-              socket.emit("tick", instantQuote);
+          // Look up instrument from database once and cache
+          prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
+            const dbPrice = Number(inst?.lastPrice || 0);
+            const basePrice = dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500 && dbPrice !== 450
+              ? dbPrice
+              : getAccurateBasePrice(inst, token);
+            tokenMetadata.set(token, {
+              lastPrice: basePrice,
+              exchange: inst?.exchange || "NSE",
+              tradingSymbol: inst?.tradingSymbol || token,
+              inst,
             });
+            const instantQuote = createQuote(token, basePrice, inst);
+            latestQuoteCache.set(token, instantQuote);
+            socket.emit("tick", instantQuote);
+          }).catch(() => {
+            const basePrice = getAccurateBasePrice(undefined, token);
+            tokenMetadata.set(token, {
+              lastPrice: basePrice,
+              exchange: "NSE",
+              tradingSymbol: token,
+            });
+            const instantQuote = createQuote(token, basePrice);
+            latestQuoteCache.set(token, instantQuote);
+            socket.emit("tick", instantQuote);
           });
         }
 
@@ -107,68 +141,13 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
               };
               lastTickTimes.set(quote.instrumentToken, Date.now());
               latestQuoteCache.set(quote.instrumentToken, fullQuote);
+              const meta = tokenMetadata.get(quote.instrumentToken);
+              if (meta) meta.lastPrice = quote.lastPrice;
               io.to(`tick:${quote.instrumentToken}`).emit("tick", fullQuote);
               orderEngine.evaluatePendingOrders(quote.instrumentToken, quote.lastPrice).catch(() => { });
-              prisma.instrument
-                .updateMany({ where: { instrumentToken: quote.instrumentToken }, data: { lastPrice: quote.lastPrice } })
-                .catch(() => { });
             });
           } catch (subErr: any) {
             console.warn(`[PriceFeed] Broker subscribe failed for token ${token}:`, subErr.message);
-          }
-
-          // Active heartbeat ticker: ensures prices update smoothly and frequently (every 1s).
-          // If real broker ticks (e.g. Zerodha KiteTicker) are actively flowing,
-          // this heartbeat gracefully yields without interfering.
-          if (!fallbackIntervals.has(token)) {
-            let lastPrice = 0;
-            let currentInst: any = null;
-            prisma.instrument.findUnique({ where: { instrumentToken: token } }).then((inst) => {
-              currentInst = inst;
-              const dbPrice = Number(inst?.lastPrice || 0);
-              if (dbPrice > 0 && dbPrice !== 1000 && dbPrice !== 1500 && dbPrice !== 450) {
-                lastPrice = dbPrice;
-              } else {
-                lastPrice = getAccurateBasePrice(inst, token);
-              }
-              const initialQuote = createQuote(token, lastPrice, currentInst);
-              latestQuoteCache.set(token, initialQuote);
-            }).catch(() => {
-              lastPrice = getAccurateBasePrice(undefined, token);
-              const initialQuote = createQuote(token, lastPrice);
-              latestQuoteCache.set(token, initialQuote);
-            });
-
-            const timer = setInterval(() => {
-              const lastSeen = lastTickTimes.get(token) ?? 0;
-              // If no live tick was received from broker stream in the last 2 seconds
-              if (Date.now() - lastSeen > 2000) {
-                if (!lastPrice || lastPrice <= 0) {
-                  lastPrice = getAccurateBasePrice(currentInst, token);
-                }
-
-                const marketStatus = isMarketOpen(currentInst?.exchange || "NSE");
-
-                // If market is OPEN: apply subtle realistic micro-variation to reflect active orderbook
-                if (marketStatus.isOpen) {
-                  const jitter = (Math.random() - 0.495) * 0.0006;
-                  const newPrice = Number((lastPrice * (1 + jitter)).toFixed(2));
-                  if (newPrice > 0) {
-                    // Snap to standard 0.05 tick size if applicable
-                    lastPrice = Math.round(newPrice * 20) / 20;
-                  }
-                }
-
-                const quote = createQuote(token, lastPrice, currentInst);
-                latestQuoteCache.set(token, quote);
-
-                io.to(`tick:${token}`).emit("tick", quote);
-                if (marketStatus.isOpen) {
-                  orderEngine.evaluatePendingOrders(token, lastPrice).catch(() => { });
-                }
-              }
-            }, 1000);
-            fallbackIntervals.set(token, timer);
           }
         }
       }
@@ -181,15 +160,12 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
         subscribedTokens.delete(token);
         socket.leave(`tick:${token}`);
         const count = (subscriberCounts.get(token) ?? 1) - 1;
-        subscriberCounts.set(token, count);
         if (count <= 0) {
           subscriberCounts.delete(token);
-          const fallbackTimer = fallbackIntervals.get(token);
-          if (fallbackTimer) {
-            clearInterval(fallbackTimer);
-            fallbackIntervals.delete(token);
-          }
+          tokenMetadata.delete(token);
           await broker.unsubscribeTicks([token]).catch(() => { });
+        } else {
+          subscriberCounts.set(token, count);
         }
       }
     });
@@ -198,17 +174,15 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
       const broker = getBrokerAdapter();
       for (const token of subscribedTokens) {
         const count = (subscriberCounts.get(token) ?? 1) - 1;
-        subscriberCounts.set(token, count);
         if (count <= 0) {
           subscriberCounts.delete(token);
-          const fallbackTimer = fallbackIntervals.get(token);
-          if (fallbackTimer) {
-            clearInterval(fallbackTimer);
-            fallbackIntervals.delete(token);
-          }
+          tokenMetadata.delete(token);
           await broker.unsubscribeTicks([token]).catch(() => { });
+        } else {
+          subscriberCounts.set(token, count);
         }
       }
+      subscribedTokens.clear();
     });
   });
 

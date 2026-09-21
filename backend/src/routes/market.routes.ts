@@ -57,7 +57,89 @@ marketRouter.get("/indices", async (_req, res) => {
   }
 });
 
-marketRouter.use(requireAuth);
+// Remove blanket requireAuth so public market master, quotes, and symbol search never fail with 401
+// marketRouter.use(requireAuth) is moved only to mutating operations like /sync-instruments
+
+function scoreInstrument(inst: any, query: string, tokens: string[]): number {
+  const sym = (inst.tradingSymbol || "").toUpperCase();
+  const name = (inst.name || "").toUpperCase();
+  const token = String(inst.instrumentToken);
+  const qUpper = query.toUpperCase();
+  const qCompact = qUpper.replace(/\s+/g, "");
+  const firstToken = tokens[0] || qCompact;
+
+  let score = 0;
+
+  // 1. Exact match with canonical index alias (NIFTY -> NIFTY 50, BANKNIFTY -> NIFTY BANK, etc.)
+  const alias = INDEX_CANONICAL_ALIASES[qUpper] || INDEX_CANONICAL_ALIASES[qCompact];
+  if (alias && (token === alias.token || sym === alias.officialSymbol || sym === alias.displayLabel)) {
+    score += 40000;
+  }
+
+  // 2. Exact match on symbol
+  if (sym === qUpper || sym === qCompact) {
+    score += 30000;
+  } else if (sym.startsWith(qCompact)) {
+    score += 15000;
+  } else if (sym.startsWith(firstToken)) {
+    score += 10000;
+  } else if (sym.includes(qCompact)) {
+    score += 5000;
+  } else if (name === qUpper) {
+    score += 4000;
+  } else if (name.startsWith(firstToken)) {
+    score += 3000;
+  } else {
+    score += 500;
+  }
+
+  // 3. Exact token match
+  if (token === query.trim()) {
+    score += 35000;
+  }
+
+  // 4. Intent detection (FUT vs CE vs PE)
+  const wantsFut = tokens.some((t) => t === "FUT" || t === "FUTURES");
+  const wantsCe = tokens.some((t) => t === "CE" || t === "CALL");
+  const wantsPe = tokens.some((t) => t === "PE" || t === "PUT");
+
+  if (wantsFut) {
+    if (inst.segment === "FUTURES" || sym.endsWith("FUT")) score += 12000;
+    else score -= 5000;
+  } else if (wantsCe) {
+    if (inst.optionType === "CE" || sym.endsWith("CE")) score += 12000;
+    else score -= 5000;
+  } else if (wantsPe) {
+    if (inst.optionType === "PE" || sym.endsWith("PE")) score += 12000;
+    else score -= 5000;
+  } else {
+    // Default priority: Equity & Benchmark indices first, then Futures, then Options
+    if (inst.segment === "EQUITY") score += 4000;
+    else if (inst.segment === "FUTURES") score += 2000;
+  }
+
+  // 5. Preferred exchange
+  if (inst.exchange === "NSE") score += 600;
+  else if (inst.exchange === "MCX") score += 500;
+  else if (inst.exchange === "NFO") score += 400;
+  else if (inst.exchange === "BSE") score += 200;
+
+  // 6. Expiry recency: near-month expiry > far-month expiry
+  if (inst.expiry) {
+    const expDate = new Date(inst.expiry).getTime();
+    const now = Date.now();
+    const daysToExpiry = (expDate - now) / (1000 * 60 * 60 * 24);
+    if (daysToExpiry >= 0 && daysToExpiry < 35) {
+      score += 1500;
+    } else if (daysToExpiry >= 35 && daysToExpiry < 70) {
+      score += 800;
+    } else if (daysToExpiry < 0) {
+      score -= 5000;
+    }
+  }
+
+  return score;
+}
 
 function enrichInstrument(inst: any) {
   const token = String(inst.instrumentToken);
@@ -122,65 +204,182 @@ marketRouter.get("/instruments", async (req, res) => {
   const page = req.query.page ? Math.max(Number(req.query.page), 1) : 1;
   const skip = (page - 1) * limit;
 
-  const exchangeFilter = exchange && exchange !== "ALL" ? { exchange } : {};
+  let exchangeFilter: any = {};
+  if (exchange && exchange !== "ALL") {
+    if (exchange === "NSE") {
+      exchangeFilter = { exchange: { in: ["NSE", "BSE"] } };
+    } else if (exchange === "NFO") {
+      exchangeFilter = { exchange: { in: ["NFO", "BFO"] } };
+    } else if (exchange === "MCX") {
+      exchangeFilter = { exchange: { in: ["MCX", "NCO"] } };
+    } else {
+      exchangeFilter = { exchange };
+    }
+  }
+
   const segmentFilter = segment && segment !== "ALL" ? { segment: segment as any } : {};
 
   if (q) {
-    const searchTerms = [q];
-    const alias = INDEX_CANONICAL_ALIASES[q.toUpperCase()];
-    if (alias) {
-      searchTerms.push(alias.officialSymbol, alias.displayLabel, alias.token);
-    }
-    const orFilters = searchTerms.flatMap((term) => [
-      { tradingSymbol: { contains: term, mode: "insensitive" as const } },
-      { name: { contains: term, mode: "insensitive" as const } },
-    ]);
+    const qUpper = q.toUpperCase();
+    const qCompact = qUpper.replace(/\s+/g, "");
+    const tokens = qUpper.split(/\s+/).filter(Boolean);
 
-    const instruments = await prisma.instrument.findMany({
+    const alias = INDEX_CANONICAL_ALIASES[qUpper] || INDEX_CANONICAL_ALIASES[qCompact];
+    const exactSymbolsToFind = Array.from(new Set([qUpper, qCompact, alias?.officialSymbol, alias?.displayLabel].filter(Boolean) as string[]));
+    const exactTokensToFind = Array.from(new Set([q, alias?.token].filter(Boolean) as string[]));
+
+    // Tier 1: Exact matches (symbol, token, canonical alias)
+    const tier1Exact = await prisma.instrument.findMany({
       where: {
-        OR: orFilters,
+        OR: [
+          { tradingSymbol: { in: exactSymbolsToFind } },
+          { instrumentToken: { in: exactTokensToFind } },
+        ],
         ...exchangeFilter,
         ...segmentFilter,
       },
-      take: limit,
-      skip,
-      orderBy: [
-        { tradingSymbol: "asc" },
-      ],
+      take: 20,
     });
-    return res.json(instruments.map(enrichInstrument));
+
+    // Tier 2: Core Equity or Index symbols starting with the search query/token
+    const tier2StartsWith = await prisma.instrument.findMany({
+      where: {
+        tradingSymbol: { startsWith: tokens[0] || qCompact, mode: "insensitive" },
+        segment: "EQUITY",
+        ...exchangeFilter,
+        ...segmentFilter,
+      },
+      take: 35,
+      orderBy: { tradingSymbol: "asc" },
+    });
+
+    // Tier 3: Active Futures matching query/token
+    const tier3Futures = await prisma.instrument.findMany({
+      where: {
+        segment: "FUTURES",
+        tradingSymbol: { contains: tokens[0] || qCompact, mode: "insensitive" },
+        ...exchangeFilter,
+        ...segmentFilter,
+      },
+      take: 35,
+      orderBy: { expiry: "asc" },
+    });
+
+    // Tier 4: Multi-token / Option / Derivative / General matches
+    let tier4Where: any = {};
+    if (tokens.length > 1) {
+      tier4Where = {
+        AND: tokens.map((t) => ({
+          OR: [
+            { tradingSymbol: { contains: t, mode: "insensitive" } },
+            { name: { contains: t, mode: "insensitive" } },
+          ],
+        })),
+        ...exchangeFilter,
+        ...segmentFilter,
+      };
+    } else {
+      tier4Where = {
+        OR: [
+          { tradingSymbol: { contains: qCompact, mode: "insensitive" } },
+          { name: { contains: q, mode: "insensitive" } },
+          { instrumentToken: { contains: q } },
+        ],
+        ...exchangeFilter,
+        ...segmentFilter,
+      };
+    }
+
+    const tier4General = await prisma.instrument.findMany({
+      where: tier4Where,
+      take: 120,
+      orderBy: { tradingSymbol: "asc" },
+    });
+
+    // Merge and deduplicate
+    const map = new Map<string, any>();
+    for (const list of [tier1Exact, tier2StartsWith, tier3Futures, tier4General]) {
+      for (const item of list) {
+        if (!map.has(item.id)) {
+          if (tokens.length > 1) {
+            const symUpper = (item.tradingSymbol || "").toUpperCase();
+            const nameUpper = (item.name || "").toUpperCase();
+            const tokenStr = String(item.instrumentToken);
+            const allMatch = tokens.every(
+              (tok) => symUpper.includes(tok) || nameUpper.includes(tok) || tokenStr === tok
+            );
+            if (!allMatch && !tier1Exact.some((e) => e.id === item.id)) continue;
+          }
+          map.set(item.id, item);
+        }
+      }
+    }
+
+    const allCandidates = Array.from(map.values());
+    allCandidates.sort((a, b) => scoreInstrument(b, q, tokens) - scoreInstrument(a, q, tokens));
+
+    const paginated = allCandidates.slice(skip, skip + limit);
+    return res.json(paginated.map(enrichInstrument));
   }
 
   // When q is empty, return top benchmark / active instruments
   if (exchange === "NFO" || segment === "FUTURES" || segment === "OPTIONS") {
-    const instruments = await prisma.instrument.findMany({
+    const topNfoSymbols = [
+      "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
+      "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN",
+    ];
+    const topNfoFutures = await prisma.instrument.findMany({
       where: {
         exchange: "NFO",
-        ...segmentFilter,
-        OR: [
-          { tradingSymbol: { contains: "FUT" } },
-          { tradingSymbol: { contains: "NIFTY" } },
-          { tradingSymbol: { contains: "BANKNIFTY" } },
-        ],
+        segment: "FUTURES",
+        OR: topNfoSymbols.map((s) => ({ tradingSymbol: { startsWith: s } })),
       },
-      take: limit,
+      take: 30,
+      orderBy: { expiry: "asc" },
+    });
+
+    const priorityTokens = new Set(topNfoFutures.map((p) => p.instrumentToken));
+    const remaining = await prisma.instrument.findMany({
+      where: {
+        exchange: "NFO",
+        instrumentToken: { notIn: Array.from(priorityTokens) },
+        ...segmentFilter,
+      },
+      take: Math.max(0, limit - topNfoFutures.length),
       skip,
       orderBy: { tradingSymbol: "asc" },
     });
-    return res.json(instruments.map(enrichInstrument));
+
+    return res.json([...topNfoFutures, ...remaining].slice(0, limit).map(enrichInstrument));
   }
 
   if (exchange === "MCX") {
-    const instruments = await prisma.instrument.findMany({
+    const topMcxSymbols = [
+      "CRUDEOIL", "CRUDEOILM", "GOLD", "GOLDM", "SILVER", "SILVERM", "NATURALGAS", "COPPER", "ZINC",
+    ];
+    const topMcxFutures = await prisma.instrument.findMany({
       where: {
-        exchange: "MCX",
+        exchange: { in: ["MCX", "NCO"] },
+        segment: "FUTURES",
+        OR: topMcxSymbols.map((s) => ({ tradingSymbol: { startsWith: s } })),
+      },
+      take: 25,
+      orderBy: { expiry: "asc" },
+    });
+
+    const priorityTokens = new Set(topMcxFutures.map((p) => p.instrumentToken));
+    const remaining = await prisma.instrument.findMany({
+      where: {
+        exchange: { in: ["MCX", "NCO"] },
+        instrumentToken: { notIn: Array.from(priorityTokens) },
         ...segmentFilter,
       },
-      take: limit,
+      take: Math.max(0, limit - topMcxFutures.length),
       skip,
       orderBy: { tradingSymbol: "asc" },
     });
-    return res.json(instruments.map(enrichInstrument));
+
+    return res.json([...topMcxFutures, ...remaining].slice(0, limit).map(enrichInstrument));
   }
 
   // NSE or ALL: Prioritize core market benchmarks & large caps
@@ -227,7 +426,7 @@ marketRouter.get("/instruments", async (req, res) => {
 });
 
 /** Pulls the full instrument dump from Zerodha Kite Connect into Postgres across NSE, NFO, MCX. */
-marketRouter.post("/sync-instruments", async (req, res) => {
+marketRouter.post("/sync-instruments", requireAuth, async (req, res) => {
   try {
     const ex = req.query.exchange ? String(req.query.exchange).split(",") : ["NSE", "NFO", "MCX"];
     const result = await InstrumentSyncService.syncExchanges(ex);
@@ -384,7 +583,20 @@ marketRouter.get("/history", async (req, res) => {
   else if (interval === "1d" || interval === "day" || interval === "daily") normInterval = "day";
 
   try {
-    const bars = await getBrokerAdapter().getHistoricalData(token, normInterval as any, from, to);
+    // If `from`/`to` are date-only strings ("YYYY-MM-DD"), they parse as midnight UTC
+    // which equals 05:30 IST — cutting off the whole trading day.
+    // Extend them to cover the full IST session:
+    //   from => 03:44 UTC (= 09:14 IST) to capture the open
+    //   to   => 18:30 UTC (= 00:00 IST next day) to capture up to close
+    let fromAdjusted = from;
+    let toAdjusted   = to;
+    if (!from.includes("T")) {
+      fromAdjusted = `${from}T03:44:00.000Z`;
+    }
+    if (!to.includes("T")) {
+      toAdjusted = `${to}T18:30:00.000Z`;
+    }
+    const bars = await getBrokerAdapter().getHistoricalData(token, normInterval as any, fromAdjusted, toAdjusted);
     if (bars && bars.length > 0) {
       return res.json(bars);
     }
@@ -401,7 +613,12 @@ marketRouter.get("/history", async (req, res) => {
       : getAccurateBasePrice(inst, token);
 
     const startTime = new Date(from).getTime();
-    const endTime = new Date(to).getTime();
+    // Ensure endTime covers the full IST trading session when `to` is a date-only string
+    let endTime = new Date(to).getTime();
+    if (!to.includes("T")) {
+      // date-only = midnight UTC = 05:30 IST; push to 18:30 UTC = midnight IST
+      endTime = new Date(`${to}T18:30:00.000Z`).getTime();
+    }
 
     let stepMs = 86400000;
     if (normInterval === "minute") stepMs = 60000;

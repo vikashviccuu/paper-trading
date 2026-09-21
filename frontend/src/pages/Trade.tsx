@@ -148,6 +148,23 @@ function KiteStatusBar() {
 }
 
 // ── Client Fallback Candlestick Generator ────────────────────
+// Returns "end of IST day" ISO string so the full trading session (09:15–15:30 IST) is included.
+function getISTDayEnd(offsetDays = 0): string {
+  const now = new Date();
+  now.setUTCDate(now.getUTCDate() + offsetDays);
+  // 18:29:59 UTC = 23:59:59 IST
+  now.setUTCHours(18, 29, 59, 0);
+  return now.toISOString();
+}
+
+function getISTDayStart(offsetDays = 0): string {
+  const now = new Date();
+  now.setUTCDate(now.getUTCDate() + offsetDays);
+  // 03:45:00 UTC = 09:15:00 IST
+  now.setUTCHours(3, 44, 0, 0);
+  return now.toISOString();
+}
+
 function generateClientFallbackBars(inst: Instrument, timeframe: string, from: string, to: string): CandlestickData[] {
   const current = Number(inst.lastPrice || (inst as any).close || 23379.35);
   const startMs = new Date(from).getTime();
@@ -158,27 +175,76 @@ function generateClientFallbackBars(inst: Instrument, timeframe: string, from: s
   else if (timeframe === "15minute" || timeframe === "15m") stepSec = 900;
   else if (timeframe === "60minute" || timeframe === "60m" || timeframe === "1h") stepSec = 3600;
 
-  const count = Math.min(Math.max(Math.floor((endMs - startMs) / (stepSec * 1000)), 25), 100);
-  const actualStep = Math.floor((endMs - startMs) / (count * 1000));
+  // For intraday, generate bars anchored to market-session timestamps (09:15–15:30 IST)
+  const isIntraday = stepSec < 86400;
   const res: CandlestickData[] = [];
-  let p = current * (1 - count * 0.0006);
 
-  for (let i = 0; i < count; i++) {
-    const time = Math.floor(startMs / 1000) + i * actualStep;
-    const isLast = i === count - 1;
-    const open = p;
-    const change = isLast ? (current - open) : (Math.random() - 0.49) * p * 0.008;
-    const close = isLast ? current : Math.max(1, open + change);
-    const high = Math.max(open, close) + Math.random() * p * 0.004;
-    const low = Math.min(open, close) - Math.random() * p * 0.004;
-    res.push({
-      time: time as any,
-      open: Number(open.toFixed(2)),
-      high: Number(high.toFixed(2)),
-      low: Number(low.toFixed(2)),
-      close: Number(close.toFixed(2)),
-    });
-    p = close;
+  if (isIntraday) {
+    // Build bars for each trading day in the range using IST session windows
+    const sessionStartHrUtc = 3;  // 09:15 IST = 03:45 UTC
+    const sessionStartMinUtc = 45;
+    const sessionEndHrUtc = 10;   // 15:30 IST = 10:00 UTC
+    const sessionEndMinUtc = 0;
+    const dayMs = 86400000;
+    let dayStart = new Date(startMs);
+    dayStart.setUTCHours(sessionStartHrUtc, sessionStartMinUtc, 0, 0);
+
+    const totalDays = Math.ceil((endMs - startMs) / dayMs);
+    let p = current * (1 - Math.min(totalDays * 75 / stepSec, 80) * 0.0003);
+
+    for (let d = 0; d < totalDays; d++) {
+      const sessionStart = new Date(dayStart.getTime() + d * dayMs);
+      // Skip weekends
+      const dow = sessionStart.getUTCDay();
+      if (dow === 0 || dow === 6) continue;
+
+      const sessionEndMs = new Date(sessionStart);
+      sessionEndMs.setUTCHours(sessionEndHrUtc, sessionEndMinUtc, 0, 0);
+
+      let t = sessionStart.getTime();
+      const end = Math.min(sessionEndMs.getTime(), endMs);
+      while (t < end && res.length < 200) {
+        const isLast = t + stepSec * 1000 >= end && d === totalDays - 1;
+        const open = p;
+        const change = isLast ? (current - open) : (Math.random() - 0.49) * p * 0.006;
+        const close = isLast ? current : Math.max(1, open + change);
+        const high = Math.max(open, close) + Math.random() * p * 0.003;
+        const low  = Math.min(open, close) - Math.random() * p * 0.003;
+        res.push({
+          time: Math.floor(t / 1000) as any,
+          open: Number(open.toFixed(2)),
+          high: Number(high.toFixed(2)),
+          low:  Number(low.toFixed(2)),
+          close: Number(close.toFixed(2)),
+        });
+        p = close;
+        t += stepSec * 1000;
+      }
+    }
+  } else {
+    // Daily bars — keep existing logic
+    const count = Math.min(Math.max(Math.floor((endMs - startMs) / (stepSec * 1000)), 25), 100);
+    const actualStep = Math.floor((endMs - startMs) / (count * 1000));
+    let p = current * (1 - count * 0.0006);
+    for (let i = 0; i < count; i++) {
+      const time = Math.floor(startMs / 1000) + i * actualStep;
+      const d = new Date(time * 1000).getUTCDay();
+      if (d === 0 || d === 6) continue;
+      const isLast = i === count - 1;
+      const open = p;
+      const change = isLast ? (current - open) : (Math.random() - 0.49) * p * 0.008;
+      const close = isLast ? current : Math.max(1, open + change);
+      const high = Math.max(open, close) + Math.random() * p * 0.004;
+      const low  = Math.min(open, close) - Math.random() * p * 0.004;
+      res.push({
+        time: time as any,
+        open: Number(open.toFixed(2)),
+        high: Number(high.toFixed(2)),
+        low:  Number(low.toFixed(2)),
+        close: Number(close.toFixed(2)),
+      });
+      p = close;
+    }
   }
   return res;
 }
@@ -269,79 +335,114 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
     });
   }, [theme]);
 
+  // ── Load bars ─────────────────────────────────────────────────────────────
+  // Cap bar timestamps to the latest valid market-close time so lightweight-charts
+  // never rejects bars with "future" timestamps after 15:30 IST.
   useEffect(() => {
     if (!series.current) return;
-    if (!bars.length) {
-      try {
-        series.current.setData([]);
-      } catch {}
+
+    // Always call setData (even with []) so chart axes stay visible
+    if (!bars || bars.length === 0) {
+      try { series.current.setData([]); } catch {}
+      lastBarTimeRef.current = 0;
+      curBarRef.current = null;
       return;
     }
+
     try {
+      // IST market close = 10:00 UTC; cap timestamps to that (or now if still open)
+      const nowSec = Math.floor(Date.now() / 1000);
+      const utcNow = new Date();
+      const todayCloseSec = Math.floor(
+        Date.UTC(utcNow.getUTCFullYear(), utcNow.getUTCMonth(), utcNow.getUTCDate(), 10, 0, 0) / 1000
+      );
+      const capSec = Math.min(todayCloseSec, nowSec);
+
       const sorted = [...bars]
-        .filter((b) => b && b.time != null && !isNaN(Number(b.close)))
+        .filter((b) => b && b.time != null && !isNaN(Number(b.close)) && Number(b.open) > 0)
+        .map((b) => ({ ...b, time: Math.min(Number(b.time), capSec) as any }))
         .sort((a, b) => Number(a.time) - Number(b.time));
 
       const uniqueBars: CandlestickData[] = [];
-      const seen = new Set();
+      const seen = new Set<number>();
       for (const b of sorted) {
-        if (!seen.has(b.time)) {
-          seen.add(b.time);
-          uniqueBars.push(b);
-        }
+        const t = Number(b.time);
+        if (!seen.has(t)) { seen.add(t); uniqueBars.push(b); }
       }
-      if (uniqueBars.length > 0) {
-        lastBarTimeRef.current = Number(uniqueBars[uniqueBars.length - 1].time);
-        curBarRef.current = uniqueBars[uniqueBars.length - 1];
+
+      if (uniqueBars.length === 0) {
+        try { series.current.setData([]); } catch {}
+        return;
       }
+
+      const last = uniqueBars[uniqueBars.length - 1];
+      lastBarTimeRef.current = Number(last.time);
+      curBarRef.current = last;
+
       series.current.setData(uniqueBars);
       chart.current?.timeScale().fitContent();
     } catch (e) {
-      console.warn("[Chart] setData warning:", e);
+      console.warn("[Chart] setData error:", e);
     }
   }, [bars, timeframe]);
 
+  // ── Live tick updates ──────────────────────────────────────────────────────
   useEffect(() => {
     const s = getSocket();
     s.emit("subscribe", [instrument.instrumentToken]);
+
     const onTick = (t: Tick) => {
       if (t.instrumentToken !== instrument.instrumentToken || !series.current) return;
+
       const nowSec = Math.floor(Date.now() / 1000);
       let stepSec = 60;
-      if (timeframe === "5minute" || timeframe === "5m") stepSec = 300;
+      if (timeframe === "5minute"  || timeframe === "5m")  stepSec = 300;
       else if (timeframe === "15minute" || timeframe === "15m") stepSec = 900;
       else if (timeframe === "60minute" || timeframe === "60m" || timeframe === "1h") stepSec = 3600;
       else if (timeframe === "day" || timeframe === "1d") stepSec = 86400;
 
-      const timeBucket = Math.floor(nowSec / stepSec) * stepSec;
-      const lastTime = lastBarTimeRef.current || timeBucket;
-      const barTime = Math.max(timeBucket, lastTime);
+      // NSE market hours in UTC: 03:44 – 10:00
+      const utcNow = new Date();
+      const dayStartUTC = Date.UTC(utcNow.getUTCFullYear(), utcNow.getUTCMonth(), utcNow.getUTCDate());
+      const todayOpenSec  = Math.floor(dayStartUTC / 1000) + 3 * 3600 + 44 * 60;  // 03:44 UTC
+      const todayCloseSec = Math.floor(dayStartUTC / 1000) + 10 * 3600;            // 10:00 UTC
+
+      const isMarketHours = nowSec >= todayOpenSec && nowSec < todayCloseSec;
+      const lastBarTime = lastBarTimeRef.current;
+      if (!lastBarTime) return; // bars not yet loaded
+
       let cur = curBarRef.current;
 
-      if (cur && Number(cur.time) === barTime) {
-        cur = {
-          ...cur,
-          time: barTime as any,
-          close: t.lastPrice,
-          high: Math.max(+cur.high, t.lastPrice),
-          low: Math.min(+cur.low, t.lastPrice),
-        };
+      if (isMarketHours) {
+        // During market hours: maintain proper time-bucketed candles
+        const timeBucket = Math.floor(nowSec / stepSec) * stepSec;
+        const barTime = Math.max(timeBucket, lastBarTime);
+
+        if (cur && Number(cur.time) === barTime) {
+          cur = { ...cur, time: barTime as any, close: t.lastPrice,
+            high: Math.max(+cur.high, t.lastPrice), low: Math.min(+cur.low, t.lastPrice) };
+        } else if (barTime > lastBarTime) {
+          const prevC = cur ? Number(cur.close) : t.lastPrice;
+          cur = { time: barTime as any, open: prevC,
+            high: Math.max(prevC, t.lastPrice), low: Math.min(prevC, t.lastPrice), close: t.lastPrice };
+        } else {
+          if (!cur) return;
+          cur = { ...cur, close: t.lastPrice,
+            high: Math.max(+cur.high, t.lastPrice), low: Math.min(+cur.low, t.lastPrice) };
+        }
+        lastBarTimeRef.current = Number(cur.time);
       } else {
-        const prevC = cur ? cur.close : t.lastPrice;
-        cur = {
-          time: barTime as any,
-          open: prevC,
-          high: Math.max(prevC, t.lastPrice),
-          low: Math.min(prevC, t.lastPrice),
-          close: t.lastPrice,
-        };
+        // ✅ After market close: update the LAST existing bar's close/high/low.
+        // Do NOT add a new bar with a future timestamp — lightweight-charts rejects it.
+        if (!cur) return;
+        cur = { ...cur, close: t.lastPrice,
+          high: Math.max(+cur.high, t.lastPrice), low: Math.min(+cur.low, t.lastPrice) };
       }
+
       curBarRef.current = cur;
-      lastBarTimeRef.current = barTime;
-      try {
-        series.current.update(cur);
-      } catch (e) {}
+      try { series.current.update(cur); } catch (_e) {}
     };
+
     s.on("tick", onTick);
     return () => { s.off("tick", onTick); s.emit("unsubscribe", [instrument.instrumentToken]); };
   }, [instrument.instrumentToken, timeframe]);
@@ -671,9 +772,9 @@ function Terminal() {
   useEffect(() => {
     if (!historyItem) return;
     setHistoryLoading(true);
-    const to = new Date().toISOString().slice(0, 10);
+    const to   = getISTDayEnd();
     const days = historyTf === "day" ? 60 : historyTf === "15minute" ? 5 : 2;
-    const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const from = getISTDayStart(-days);
     MarketAPI.history(historyItem.instrumentToken, historyTf, from, to)
       .then((r) => setHistoryData(r.data ?? []))
       .catch(() => setHistoryData([]))
@@ -709,9 +810,11 @@ function Terminal() {
   // chart bars
   useEffect(() => {
     if (!instrument) return;
-    const to   = new Date().toISOString().slice(0, 10);
+    // Use full IST-day end timestamp so bars from the entire trading session
+    // (09:15–15:30 IST) are always included even after market close.
+    const to   = getISTDayEnd();   // today 23:59:59 IST
     const days = tf === "day" ? 90 : tf === "15minute" ? 7 : tf === "5minute" ? 4 : 2;
-    const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const from = getISTDayStart(-days); // N days ago 09:15 IST
     MarketAPI.history(instrument.instrumentToken, tf as any, from, to)
       .then((r) => {
         if (r.data && Array.isArray(r.data) && r.data.length > 0) {
@@ -783,15 +886,18 @@ function Terminal() {
           setWPrices((prev) => ({ ...initial, ...prev }));
         })
         .catch(() => {});
-    }, 250);
+    }, 200);
     return () => clearTimeout(t);
   }, [query, segmentFilter]);
 
-  // watchlist live prices
+  // watchlist live prices - subscribe to active / visible instruments
   useEffect(() => {
     if (!results.length) return;
     const s = getSocket();
-    const tokens = results.map((r) => r.instrumentToken);
+    const tokens = results.slice(0, 30).map((r) => r.instrumentToken);
+    if (instrument && !tokens.includes(instrument.instrumentToken)) {
+      tokens.push(instrument.instrumentToken);
+    }
     s.emit("subscribe", tokens);
     const onTick = (t: Tick) =>
       setWPrices((p) => {
@@ -807,7 +913,7 @@ function Terminal() {
       });
     s.on("tick", onTick);
     return () => { s.off("tick", onTick); s.emit("unsubscribe", tokens); };
-  }, [results]);
+  }, [results, instrument?.instrumentToken]);
 
   // Live prices for open positions & holdings
   useEffect(() => {
@@ -1208,9 +1314,9 @@ function Terminal() {
                   {(() => {
                     const filteredResults = results.filter((r) => {
                       if (segmentFilter === "ALL") return true;
-                      if (segmentFilter === "NSE") return r.exchange === "NSE";
-                      if (segmentFilter === "NFO") return r.exchange === "NFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
-                      if (segmentFilter === "MCX") return r.exchange === "MCX";
+                      if (segmentFilter === "NSE") return r.exchange === "NSE" || r.exchange === "BSE" || r.segment === "EQUITY";
+                      if (segmentFilter === "NFO") return r.exchange === "NFO" || r.exchange === "BFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
+                      if (segmentFilter === "MCX") return r.exchange === "MCX" || r.exchange === "NCO";
                       return true;
                     });
 
