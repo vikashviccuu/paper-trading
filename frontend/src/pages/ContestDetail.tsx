@@ -57,24 +57,48 @@ export default function ContestDetail() {
   function load() {
     if (!id) return;
     setLoading(true);
+
+    // Fetch the contest first so we know its status before deciding whether to
+    // force a leaderboard recompute (we only force for ACTIVE contests to avoid
+    // unnecessary heavy computation on already-finalized ENDED contests).
     ContestsAPI.get(id)
-      .then((res) => setContest(res.data))
+      .then((res) => {
+        const c = res.data;
+        setContest(c);
+
+        // For ACTIVE contests: force a recompute so the leaderboard always
+        // reflects live NAV — this fixes stale zero scores that get cached after
+        // the first cron snapshot cycle when participants haven't yet traded.
+        const forceRecompute = c.status === "ACTIVE";
+        ContestsAPI.leaderboard(id, forceRecompute)
+          .then((lb) => {
+            setLeaderboard(lb.data.slice(0, 5));
+            // Re-fetch "me" AFTER the leaderboard recompute so the "Your Contest
+            // Portfolio Performance" card reflects the freshly persisted scores
+            // (returnPct, riskScore, maxDrawdownPct, compositeScore, rank).
+            ContestsAPI.me(id)
+              .then((me) => {
+                setJoined(true);
+                setMe(me.data);
+              })
+              .catch(() => {
+                // Not joined — keep joined=false but don't overwrite a previous me
+              });
+          })
+          .catch(() => {
+            /* leaderboard load failed — non-fatal */
+          });
+      })
       .catch((err) => setError(err.response?.data?.error ?? "Failed to load contest"))
       .finally(() => setLoading(false));
 
-    ContestsAPI.me(id)
-      .then((res) => {
-        setJoined(true);
-        setMe(res.data);
-      })
-      .catch(() => setJoined(false));
-
-    ContestsAPI.leaderboard(id).then((res) => setLeaderboard(res.data.slice(0, 5)));
-    ContestsAPI.prizePool(id).then((res) => setPrizePool(res.data));
+    // These can run in parallel with the above
+    ContestsAPI.prizePool(id).then((res) => setPrizePool(res.data)).catch(() => {});
     ContestsAPI.myPrize(id)
       .then((res) => setMyPrize(res.data))
       .catch(() => setMyPrize(null));
   }
+
 
   useEffect(load, [id]);
 

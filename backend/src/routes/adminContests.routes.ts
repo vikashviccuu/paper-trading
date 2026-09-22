@@ -6,6 +6,7 @@ import { prisma } from "../utils/prisma";
 import { env } from "../config/env";
 import { computeContestEndDate } from "../utils/contestDuration";
 import { contestEndService } from "../engine/ContestEndService";
+import { leaderboardService } from "../engine/LeaderboardService";
 import { prizeService } from "../services/PrizeService";
 import { AppError } from "../engine/OrderEngine";
 
@@ -123,6 +124,21 @@ adminContestsRouter.post("/:id/cancel", async (req, res) => {
   }
   const updated = await prisma.contest.update({ where: { id: contest.id }, data: { status: "CANCELLED" } });
   res.json(updated);
+});
+
+/**
+ * Admin override: force-recompute leaderboard scores (Return %, Risk, Max Drawdown,
+ * Composite Score) for a contest without waiting for the 15-min cron cycle.
+ * Use this on UAT/Production to fix stale zero scores after trades are placed.
+ */
+adminContestsRouter.post("/:id/recompute-scores", async (req, res) => {
+  const contest = await prisma.contest.findUnique({ where: { id: req.params.id } });
+  if (!contest) return res.status(404).json({ error: "Contest not found" });
+  if (contest.status === "CANCELLED") {
+    return res.status(400).json({ error: "Cannot recompute scores for a CANCELLED contest" });
+  }
+  const rows = await leaderboardService.computeLeaderboard(contest.id);
+  res.json({ recomputed: rows.length, rows });
 });
 
 /** Admin override: force end + square-off a contest right now, regardless of endDate. */

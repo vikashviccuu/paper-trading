@@ -91,10 +91,30 @@ contestsRouter.get("/:id/leaderboard", async (req, res) => {
     orderBy: [{ rank: "asc" }, { joinedAt: "asc" }],
   });
 
-  // Recompute if explicitly requested or if participants are missing ranks/scores
+  // --- Staleness detection ---
+  // Scores are stale when:
+  //   (a) explicitly requested via ?recompute=true
+  //   (b) any participant has no rank / has never been scored
+  //   (c) contest is still ACTIVE and any participant has zero/null composite score
+  //       (indicates the first cron run only saw the seed snapshot and cached zeros)
+  //   (d) contest is still ACTIVE and lastScoredAt is older than 15 minutes
+  //       (cron may have missed a cycle or the server just restarted)
+  const SCORE_STALE_MS = 15 * 60 * 1_000; // 15 minutes — matches snapshot cron cadence
+  const now = Date.now();
+
   const needsRecompute =
     req.query.recompute === "true" ||
-    participants.some((p) => p.rank == null || p.lastScoredAt == null);
+    participants.some((p) => p.rank == null || p.lastScoredAt == null) ||
+    (contest.status === "ACTIVE" &&
+      participants.some(
+        (p) =>
+          // Scores cached as zero (first-run before any real NAV change)
+          p.compositeScore == null ||
+          p.compositeScore === 0 ||
+          // Scores are older than one snapshot window — NAV may have drifted
+          (p.lastScoredAt != null &&
+            now - new Date(p.lastScoredAt).getTime() > SCORE_STALE_MS)
+      ));
 
   if (needsRecompute && participants.length > 0) {
     const rows = await leaderboardService.computeLeaderboard(contest.id);
