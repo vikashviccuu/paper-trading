@@ -72,7 +72,7 @@ export default function ContestDetail() {
         const forceRecompute = c.status === "ACTIVE";
         ContestsAPI.leaderboard(id, forceRecompute)
           .then((lb) => {
-            setLeaderboard(lb.data.slice(0, 5));
+            setLeaderboard(lb.data);
             // Re-fetch "me" AFTER the leaderboard recompute so the "Your Contest
             // Portfolio Performance" card reflects the freshly persisted scores
             // (returnPct, riskScore, maxDrawdownPct, compositeScore, rank).
@@ -620,7 +620,7 @@ export default function ContestDetail() {
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 8 }}>
           <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.3px" }}>
-            Leaderboard (Top 5)
+            Contest Leaderboard
           </h3>
           <Link
             to={`/contests/${contest.id}/leaderboard`}
