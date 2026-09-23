@@ -19,7 +19,13 @@ import { contestEndService } from "../engine/ContestEndService";
  * below for contests where that matters (e.g. short intraday-only contests).
  */
 export function startContestSnapshotScheduler() {
-  cron.schedule("*/15 * * * *", async () => {
+  const currentEnv = (process.env.APP_ENV || process.env.NODE_ENV || "development").toLowerCase();
+  const isTestEnv = ["local", "development", "dev", "qc", "uat", "staging"].includes(currentEnv);
+  const cronSchedule = isTestEnv ? "* * * * *" : "*/15 * * * *";
+
+  console.log(`[ContestScheduler] Initializing contest snapshot scheduler on cadence: ${cronSchedule} (env=${currentEnv})`);
+
+  cron.schedule(cronSchedule, async () => {
     await activateUpcomingContests();
     await endExpiredContests();
     await snapshotAndScoreActiveContests();

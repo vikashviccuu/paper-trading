@@ -52,6 +52,7 @@ export const AdminContestsAPI = {
   update: (id: string, payload: Record<string, unknown>) => adminApi.patch<AdminContest>(`/admin/contests/${id}`, payload),
   cancel: (id: string) => adminApi.post(`/admin/contests/${id}/cancel`),
   endNow: (id: string) => adminApi.post(`/admin/contests/${id}/end-now`),
+  recomputeScores: (id: string) => adminApi.post<{ recomputed: number; rows: any[] }>(`/admin/contests/${id}/recompute-scores`),
 };
 
 export interface AdminKycEntry {

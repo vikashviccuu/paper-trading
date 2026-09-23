@@ -1,0 +1,75 @@
+# Implementation Plan - Modern Interactive Theme Styling Across All Application Pages
+
+The goal is to implement modern, interactive, and responsive styling across the **entire application** under both White themes (`modern-white`, `nordic-snow`) and Dark themes (`cyber-midnight`, `pure-obsidian`, etc.), removing all remaining hardcoded dark colors (`#0d1117`, `#131920`, `#1e2d3d`, `rgba(13, 17, 28, ...)`) and ensuring high contrast, interactive feedback, and visual polish.
+
+## User Review Required
+
+> [!NOTE]
+> All updates use standard CSS variables (`var(--bg-surface)`, `var(--bg-elevated)`, `var(--border)`, `var(--text-primary)`, `var(--accent)`, `var(--card-shadow)`, etc.) defined across all 8 theme palettes. Existing dark theme visuals remain rich and atmospheric, while white themes gain crisp contrast, interactive elevation, and sleek focus states.
+
+## Proposed Changes
+
+---
+
+### 1. Global Styles & Theme Variables
+#### [MODIFY] [global.css](file:///d:/python-pron/paper-trading-platform/frontend/src/styles/global.css)
+- Add `--blue-bg`, `--blue-border`, `--yellow-bg`, `--yellow-border` tokens to all 8 theme blocks in `:root` / `[data-theme]`.
+- Add global `.p-card`, `.p-input`, `.p-select`, `.p-btn`, `.p-badge`, `.p-step` utility classes with interactive transitions (hover lift, focus ring, smooth shadows).
+
+---
+
+### 2. Profile Suite Components
+#### [MODIFY] [ProfileUI.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/components/profile/ProfileUI.tsx)
+- Modernize all `.p-*` component styles to use CSS variables and micro-interactions.
+#### [MODIFY] [Profile.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/Profile.tsx)
+- Update `KYC_STATUS_STYLE` dictionary to use CSS variables (`var(--green-bg)`, `var(--blue-bg)`, `var(--yellow-bg)`, etc.).
+- Update loading placeholder text color.
+#### [MODIFY] [CommunicationDetailsForm.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/components/profile/CommunicationDetailsForm.tsx)
+- Replace `#131920`, `#1e2d3d`, `#e6edf3`, `#1e2d42` with `var(--bg-elevated)`, `var(--border)`, `var(--text-primary)`, `var(--blue-bg)`.
+#### [MODIFY] [KycSection.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/components/profile/KycSection.tsx)
+- Replace `#131920`, `#0d1117`, `#1e2d42` with `var(--bg-elevated)`, `var(--bg-surface)`, `var(--blue-bg)`.
+#### [MODIFY] [BankAccountsSection.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/components/profile/BankAccountsSection.tsx)
+- Replace `#131920`, `#1e2d3d`, `#e6edf3` with `var(--bg-elevated)`, `var(--border)`, `var(--text-primary)`.
+#### [MODIFY] [PayoutPreferenceSection.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/components/profile/PayoutPreferenceSection.tsx)
+- Replace `#131920`, `#0a1628`, `#1e3a5f` with `var(--bg-elevated)`, `var(--blue-bg)`, `var(--border)`.
+#### [MODIFY] [LoginHistorySection.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/components/profile/LoginHistorySection.tsx)
+- Replace `rgba(13, 17, 28, 0.95)`, `#161b22`, `#30363d` with `var(--bg-surface)`, `var(--bg-elevated)`, `var(--border)`.
+
+---
+
+### 3. Admin & Core Application Pages
+#### [MODIFY] [AdminLoginHistory.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/admin/AdminLoginHistory.tsx)
+- Refactor all cards, tables, inputs, filters, badges, and modals from hardcoded dark hex codes to CSS variables.
+#### [MODIFY] [AdminDashboard.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/admin/AdminDashboard.tsx)
+- Replace `rgba(13, 17, 28, ...)` and hardcoded `#0d1117` option background with `var(--bg-surface)`, `var(--bg-elevated)`, `var(--border)`.
+#### [MODIFY] [AdminKycQueue.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/admin/AdminKycQueue.tsx)
+- Replace `rgba(13, 17, 28, ...)` and `rgba(255, 255, 255, 0.08)` with `var(--bg-surface)` and `var(--border)`.
+#### [MODIFY] [AdminContestDetail.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/admin/AdminContestDetail.tsx)
+- Replace `rgba(13, 17, 28, ...)` with `var(--bg-surface)`.
+#### [MODIFY] [AdminContestPrizes.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/admin/AdminContestPrizes.tsx)
+- Replace `rgba(13, 17, 28, ...)` with `var(--bg-surface)`.
+#### [MODIFY] [AdminLiveTrading.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/admin/AdminLiveTrading.tsx)
+- Replace `rgba(13, 17, 28, ...)` with `var(--bg-surface)`.
+#### [MODIFY] [ContestDetail.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/ContestDetail.tsx)
+- Replace `rgba(13, 17, 28, ...)` with `var(--bg-surface)`.
+#### [MODIFY] [Leaderboard.tsx](file:///d:/python-pron/paper-trading-platform/frontend/src/pages/Leaderboard.tsx)
+- Replace `rgba(13, 17, 28, ...)` with `var(--bg-surface)`.
+
+---
+
+### 4. Build, Git & Server Deployment
+- Run `npm run build` in `frontend/`.
+- Git commit and push to `origin/main`.
+- Deploy to remote server `187.127.178.25` via `deploy_theme.py`.
+- Verify live responses on both local and production endpoints.
+
+## Verification Plan
+
+### Automated Tests
+- `npm run build` in `frontend/` (validates TypeScript compilation and bundle creation with zero errors).
+
+### Manual Verification
+- Verify `http://localhost:5174/profile` in both Modern White and Cyber Midnight themes.
+- Verify `http://localhost:5174/admin/logins` in both Modern White and Cyber Midnight themes.
+- Verify `http://localhost:5174/admin/kyc` and `http://localhost:5174/leaderboard` in both Modern White and Cyber Midnight themes.
+- Verify remote `https://187-127-178-25.sslip.io/profile` responds with HTTP 200 after deployment.

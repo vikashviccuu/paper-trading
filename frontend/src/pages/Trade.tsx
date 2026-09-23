@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, FormEvent } from "react";
+import React, { useEffect, useState, useRef, useMemo, useDeferredValue, useCallback, FormEvent } from "react";
 import { useLocation, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { createChart, IChartApi, ISeriesApi, CandlestickData } from "lightweight-charts";
 import { Instrument, MarketAPI, OrdersAPI, PortfolioAPI, OptionsAPI, api, FullMarketQuote } from "../services/api";
@@ -15,9 +15,11 @@ const DEFAULT_INDICES = [
 ];
 
 // ── Ticker bar ───────────────────────────────────────────────
-function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; currentIstTime?: string } | null }) {
+const TickerBar = React.memo(function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; currentIstTime?: string } | null }) {
   const [indices, setIndices] = useState<Array<{ label: string; token: string; tradingSymbol?: string }>>(DEFAULT_INDICES);
   const [prices, setPrices] = useState<Record<string, { ltp: number; close: number; chg: number; pct: number }>>({});
+  const pricesRef = useRef<Record<string, { ltp: number; close: number; chg: number; pct: number }>>({});
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     MarketAPI.indices()
@@ -34,44 +36,50 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
     MarketAPI.quote(tokens)
       .then((res) => {
         if (Array.isArray(res.data) && res.data.length > 0) {
-          setPrices((prev) => {
-            const next = { ...prev };
-            for (const q of res.data) {
-              if (q && q.instrumentToken) {
-                const ltp = Number(q.lastPrice || 0);
-                const close = Number((q as any).closePrice || q.close || ltp);
-                const chg = Number(((q as any).netChange ?? (ltp - close)).toFixed(2));
-                const pct = close > 0 ? Number(((q as any).changePercent ?? ((chg / close) * 100)).toFixed(2)) : 0;
-                next[q.instrumentToken] = { ltp, close, chg, pct };
-              }
+          const next = { ...pricesRef.current };
+          for (const q of res.data) {
+            if (q && q.instrumentToken) {
+              const ltp = Number(q.lastPrice || 0);
+              const close = Number((q as any).closePrice || q.close || ltp);
+              const chg = Number(((q as any).netChange ?? (ltp - close)).toFixed(2));
+              const pct = close > 0 ? Number(((q as any).changePercent ?? ((chg / close) * 100)).toFixed(2)) : 0;
+              next[q.instrumentToken] = { ltp, close, chg, pct };
             }
-            return next;
-          });
+          }
+          pricesRef.current = next;
+          setPrices(next);
         }
       })
       .catch(() => {});
 
-    // Subscribe to WebSocket ticks for real-time live updates
     const s = getSocket();
     s.emit("subscribe", tokens);
-    const onTick = (t: Tick) =>
-      setPrices((p) => {
-        const existing = p[t.instrumentToken];
-        const close = t.close ?? (t as any).closePrice ?? existing?.close ?? t.lastPrice;
-        const chg = Number((t.lastPrice - close).toFixed(2));
-        const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
-        return {
-          ...p,
-          [t.instrumentToken]: {
-            ltp: t.lastPrice,
-            close,
-            chg,
-            pct,
-          },
-        };
-      });
+    const onTick = (t: Tick) => {
+      const existing = pricesRef.current[t.instrumentToken];
+      const close = t.close ?? (t as any).closePrice ?? existing?.close ?? t.lastPrice;
+      const chg = Number((t.lastPrice - close).toFixed(2));
+      const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
+      pricesRef.current[t.instrumentToken] = {
+        ltp: t.lastPrice,
+        close,
+        chg,
+        pct,
+      };
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          setPrices({ ...pricesRef.current });
+          rafRef.current = null;
+        });
+      }
+    };
     s.on("tick", onTick);
-    return () => { s.off("tick", onTick); s.emit("unsubscribe", tokens); };
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      s.off("tick", onTick);
+    };
   }, [indices]);
 
   return (
@@ -140,19 +148,12 @@ function TickerBar({ marketStatus }: { marketStatus?: { isOpen: boolean; current
       </div>
     </div>
   );
-}
-
-// ── Kite status bar (shown only when token is invalid) ───────
-function KiteStatusBar() {
-  return null;
-}
+});
 
 // ── Client Fallback Candlestick Generator ────────────────────
-// Returns "end of IST day" ISO string so the full trading session (09:15–15:30 IST) is included.
 function getISTDayEnd(offsetDays = 0): string {
   const now = new Date();
   now.setUTCDate(now.getUTCDate() + offsetDays);
-  // 18:29:59 UTC = 23:59:59 IST
   now.setUTCHours(18, 29, 59, 0);
   return now.toISOString();
 }
@@ -160,13 +161,12 @@ function getISTDayEnd(offsetDays = 0): string {
 function getISTDayStart(offsetDays = 0): string {
   const now = new Date();
   now.setUTCDate(now.getUTCDate() + offsetDays);
-  // 03:45:00 UTC = 09:15:00 IST
   now.setUTCHours(3, 44, 0, 0);
   return now.toISOString();
 }
 
 function generateClientFallbackBars(inst: Instrument, timeframe: string, from: string, to: string): CandlestickData[] {
-  const current = Number(inst.lastPrice || (inst as any).close || 23379.35);
+  const current = Number(inst.lastPrice || (inst as any).closePrice || (inst as any).close || 100);
   const startMs = new Date(from).getTime();
   const endMs = new Date(to).getTime();
   let stepSec = 86400;
@@ -175,12 +175,10 @@ function generateClientFallbackBars(inst: Instrument, timeframe: string, from: s
   else if (timeframe === "15minute" || timeframe === "15m") stepSec = 900;
   else if (timeframe === "60minute" || timeframe === "60m" || timeframe === "1h") stepSec = 3600;
 
-  // For intraday, generate bars anchored to market-session timestamps (09:15–15:30 IST)
   const isIntraday = stepSec < 86400;
   const res: CandlestickData[] = [];
 
   if (isIntraday) {
-    // Build bars for each trading day in the range using IST session windows
     const sessionStartHrUtc = 3;  // 09:15 IST = 03:45 UTC
     const sessionStartMinUtc = 45;
     const sessionEndHrUtc = 10;   // 15:30 IST = 10:00 UTC
@@ -189,12 +187,11 @@ function generateClientFallbackBars(inst: Instrument, timeframe: string, from: s
     let dayStart = new Date(startMs);
     dayStart.setUTCHours(sessionStartHrUtc, sessionStartMinUtc, 0, 0);
 
-    const totalDays = Math.ceil((endMs - startMs) / dayMs);
+    const totalDays = Math.max(1, Math.ceil((endMs - startMs) / dayMs));
     let p = current * (1 - Math.min(totalDays * 75 / stepSec, 80) * 0.0003);
 
     for (let d = 0; d < totalDays; d++) {
       const sessionStart = new Date(dayStart.getTime() + d * dayMs);
-      // Skip weekends
       const dow = sessionStart.getUTCDay();
       if (dow === 0 || dow === 6) continue;
 
@@ -222,7 +219,6 @@ function generateClientFallbackBars(inst: Instrument, timeframe: string, from: s
       }
     }
   } else {
-    // Daily bars — keep existing logic
     const count = Math.min(Math.max(Math.floor((endMs - startMs) / (stepSec * 1000)), 25), 100);
     const actualStep = Math.floor((endMs - startMs) / (count * 1000));
     let p = current * (1 - count * 0.0006);
@@ -250,13 +246,14 @@ function generateClientFallbackBars(inst: Instrument, timeframe: string, from: s
 }
 
 // ── Live candlestick chart ───────────────────────────────────
-function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrument; bars: CandlestickData[]; timeframe: string; theme?: string }) {
+const LiveChart = React.memo(function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrument; bars: CandlestickData[]; timeframe: string; theme?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lastBarTimeRef = useRef<number>(0);
   const curBarRef = useRef<CandlestickData | null>(null);
 
+  // Initialize and maintain lightweight chart instance
   useEffect(() => {
     if (!ref.current) return;
     const isLight = theme === "modern-white" || theme === "nordic-snow";
@@ -288,7 +285,7 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
     chart.current = c;
     series.current = s;
 
-    // Use ResizeObserver for accurate, instantaneous layout responsiveness
+    // Resize observer for container dimension updates
     const ro = new ResizeObserver((entries) => {
       if (!entries || !entries[0] || !chart.current) return;
       const { width, height } = entries[0].contentRect;
@@ -298,12 +295,49 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
     });
     ro.observe(ref.current);
 
-    const onResize = () => ref.current && c.applyOptions({ width: ref.current.clientWidth, height: ref.current.clientHeight || 340 });
+    const onResize = () => {
+      if (ref.current && chart.current) {
+        const w = ref.current.clientWidth;
+        const h = ref.current.clientHeight || 340;
+        if (w > 0 && h > 0) {
+          chart.current.applyOptions({ width: w, height: h });
+        }
+      }
+    };
+
+    // Tab switching / Window focus handler ensuring chart never freezes or breaks on tab switch
+    const onTabVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        const fit = () => {
+          if (ref.current && chart.current) {
+            const w = ref.current.clientWidth;
+            const h = ref.current.clientHeight || 340;
+            if (w > 0 && h > 0) {
+              chart.current.applyOptions({ width: w, height: h });
+              try {
+                chart.current.timeScale().fitContent();
+              } catch {}
+            }
+          }
+        };
+        fit();
+        requestAnimationFrame(fit);
+        setTimeout(fit, 80);
+      }
+    };
+
     window.addEventListener("resize", onResize);
+    window.addEventListener("focus", onTabVisibilityOrFocus);
+    document.addEventListener("visibilitychange", onTabVisibilityOrFocus);
+
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("focus", onTabVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", onTabVisibilityOrFocus);
       c.remove();
+      chart.current = null;
+      series.current = null;
     };
   }, []);
 
@@ -335,22 +369,15 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
     });
   }, [theme]);
 
-  // ── Load bars ─────────────────────────────────────────────────────────────
-  // Cap bar timestamps to the latest valid market-close time so lightweight-charts
-  // never rejects bars with "future" timestamps after 15:30 IST.
+  // Load bars and fit content immediately
   useEffect(() => {
     if (!series.current) return;
 
-    // Always call setData (even with []) so chart axes stay visible
     if (!bars || bars.length === 0) {
-      try { series.current.setData([]); } catch {}
-      lastBarTimeRef.current = 0;
-      curBarRef.current = null;
       return;
     }
 
     try {
-      // IST market close = 10:00 UTC; cap timestamps to that (or now if still open)
       const nowSec = Math.floor(Date.now() / 1000);
       const utcNow = new Date();
       const todayCloseSec = Math.floor(
@@ -370,10 +397,7 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
         if (!seen.has(t)) { seen.add(t); uniqueBars.push(b); }
       }
 
-      if (uniqueBars.length === 0) {
-        try { series.current.setData([]); } catch {}
-        return;
-      }
+      if (uniqueBars.length === 0) return;
 
       const last = uniqueBars[uniqueBars.length - 1];
       lastBarTimeRef.current = Number(last.time);
@@ -384,9 +408,9 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
     } catch (e) {
       console.warn("[Chart] setData error:", e);
     }
-  }, [bars, timeframe]);
+  }, [bars, timeframe, instrument.instrumentToken]);
 
-  // ── Live tick updates ──────────────────────────────────────────────────────
+  // Live tick listener directly updating candlestick canvas at 60 FPS
   useEffect(() => {
     const s = getSocket();
     s.emit("subscribe", [instrument.instrumentToken]);
@@ -401,7 +425,6 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
       else if (timeframe === "60minute" || timeframe === "60m" || timeframe === "1h") stepSec = 3600;
       else if (timeframe === "day" || timeframe === "1d") stepSec = 86400;
 
-      // NSE market hours in UTC: 03:44 – 10:00
       const utcNow = new Date();
       const dayStartUTC = Date.UTC(utcNow.getUTCFullYear(), utcNow.getUTCMonth(), utcNow.getUTCDate());
       const todayOpenSec  = Math.floor(dayStartUTC / 1000) + 3 * 3600 + 44 * 60;  // 03:44 UTC
@@ -409,49 +432,78 @@ function LiveChart({ instrument, bars, timeframe, theme }: { instrument: Instrum
 
       const isMarketHours = nowSec >= todayOpenSec && nowSec < todayCloseSec;
       const lastBarTime = lastBarTimeRef.current;
-      if (!lastBarTime) return; // bars not yet loaded
 
       let cur = curBarRef.current;
 
+      if (!lastBarTime || !cur) {
+        const barTime = isMarketHours ? Math.floor(nowSec / stepSec) * stepSec : nowSec;
+        cur = {
+          time: barTime as any,
+          open: t.lastPrice,
+          high: t.lastPrice,
+          low: t.lastPrice,
+          close: t.lastPrice
+        };
+        lastBarTimeRef.current = barTime;
+        curBarRef.current = cur;
+        try { series.current.update(cur); } catch {}
+        return;
+      }
+
       if (isMarketHours) {
-        // During market hours: maintain proper time-bucketed candles
         const timeBucket = Math.floor(nowSec / stepSec) * stepSec;
         const barTime = Math.max(timeBucket, lastBarTime);
 
-        if (cur && Number(cur.time) === barTime) {
-          cur = { ...cur, time: barTime as any, close: t.lastPrice,
-            high: Math.max(+cur.high, t.lastPrice), low: Math.min(+cur.low, t.lastPrice) };
+        if (Number(cur.time) === barTime) {
+          cur = {
+            ...cur,
+            time: barTime as any,
+            close: t.lastPrice,
+            high: Math.max(+cur.high, t.lastPrice),
+            low: Math.min(+cur.low, t.lastPrice)
+          };
         } else if (barTime > lastBarTime) {
-          const prevC = cur ? Number(cur.close) : t.lastPrice;
-          cur = { time: barTime as any, open: prevC,
-            high: Math.max(prevC, t.lastPrice), low: Math.min(prevC, t.lastPrice), close: t.lastPrice };
+          const prevC = Number(cur.close) || t.lastPrice;
+          cur = {
+            time: barTime as any,
+            open: prevC,
+            high: Math.max(prevC, t.lastPrice),
+            low: Math.min(prevC, t.lastPrice),
+            close: t.lastPrice
+          };
         } else {
-          if (!cur) return;
-          cur = { ...cur, close: t.lastPrice,
-            high: Math.max(+cur.high, t.lastPrice), low: Math.min(+cur.low, t.lastPrice) };
+          cur = {
+            ...cur,
+            close: t.lastPrice,
+            high: Math.max(+cur.high, t.lastPrice),
+            low: Math.min(+cur.low, t.lastPrice)
+          };
         }
         lastBarTimeRef.current = Number(cur.time);
       } else {
-        // ✅ After market close: update the LAST existing bar's close/high/low.
-        // Do NOT add a new bar with a future timestamp — lightweight-charts rejects it.
-        if (!cur) return;
-        cur = { ...cur, close: t.lastPrice,
-          high: Math.max(+cur.high, t.lastPrice), low: Math.min(+cur.low, t.lastPrice) };
+        cur = {
+          ...cur,
+          close: t.lastPrice,
+          high: Math.max(+cur.high, t.lastPrice),
+          low: Math.min(+cur.low, t.lastPrice)
+        };
       }
 
       curBarRef.current = cur;
-      try { series.current.update(cur); } catch (_e) {}
+      try { series.current.update(cur); } catch {}
     };
 
     s.on("tick", onTick);
-    return () => { s.off("tick", onTick); s.emit("unsubscribe", [instrument.instrumentToken]); };
+    return () => {
+      s.off("tick", onTick);
+    };
   }, [instrument.instrumentToken, timeframe]);
 
   return <div ref={ref} style={{ width: "100%", height: "100%" }} />;
-}
+});
 
 // ── Market Depth Card (Level 2 Quotes per Kite Connect specification) ──
-function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null; instrument: Instrument | null; isLight?: boolean }) {
+const MarketDepthCard = React.memo(function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null; instrument: Instrument | null; isLight?: boolean }) {
   if (!quote || !instrument) return null;
 
   const buyLevels = quote.depth?.buy || [];
@@ -549,7 +601,7 @@ function MarketDepthCard({ quote, instrument }: { quote: FullMarketQuote | null;
       </div>
     </div>
   );
-}
+});
 
 // ── Main terminal ────────────────────────────────────────────
 function Terminal() {
@@ -574,7 +626,6 @@ function Terminal() {
   }, []);
 
   // Zerodha redirects to /trade?status=success&request_token=...
-  // Exchange token silently then reload clean URL
   useEffect(() => {
     api.get("/broker/zerodha/login-url")
       .then((r) => { if (r.data?.url) setLoginUrl(r.data.url); })
@@ -608,19 +659,25 @@ function Terminal() {
   const [prevClose,  setPrevClose]  = useState<number | null>(null);
   const [quote,      setQuote]      = useState<any>(null);
   const [priceFlash, setPriceFlash] = useState<"up" | "dn" | null>(null);
-  const prevLtpRef = useRef<number | null>(null);
 
+  const prevLtpRef = useRef<number | null>(null);
+  const wPricesRef = useRef<Record<string, { ltp: number; close: number; chg: number; pct: number }>>({});
+  const activeTokenRef = useRef<string | null>(instrument?.instrumentToken ?? "256265");
+  const reqIdRef = useRef<number>(0);
+  const tickFlushTimerRef = useRef<any>(null);
+
+  // Flash highlight on significant price changes
   useEffect(() => {
     if (ltp != null && prevLtpRef.current != null && ltp !== prevLtpRef.current) {
       setPriceFlash(ltp > prevLtpRef.current ? "up" : "dn");
-      const timer = setTimeout(() => setPriceFlash(null), 600);
+      const timer = setTimeout(() => setPriceFlash(null), 400);
       prevLtpRef.current = ltp;
       return () => clearTimeout(timer);
     }
     prevLtpRef.current = ltp;
   }, [ltp]);
 
-  // order form
+  // Order form state
   const [side,  setSide]  = useState<"BUY"|"SELL">("BUY");
   const [otype, setOtype] = useState<"MARKET"|"LIMIT"|"SL"|"SL_M">("MARKET");
   const [ptype, setPtype] = useState<"INTRADAY"|"DELIVERY"|"NORMAL">("INTRADAY");
@@ -633,10 +690,13 @@ function Terminal() {
   const [walletRealizedPnL, setWalletRealizedPnL] = useState<number>(0);
   const [positions,         setPositions]         = useState<any[]>([]);
   const [holdings,          setHoldings]          = useState<any[]>([]);
-  const [orders,    setOrders]    = useState<any[]>([]);
-  const [query,     setQuery]     = useState("");
-  const [results,   setResults]   = useState<Instrument[]>([]);
-  const [wPrices,   setWPrices]   = useState<Record<string, { ltp: number; close: number; chg: number; pct: number }>>({});
+  const [orders,            setOrders]            = useState<any[]>([]);
+
+  // Search and watchlist state
+  const [query,         setQuery]         = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [results,       setResults]       = useState<Instrument[]>([]);
+  const [wPrices,       setWPrices]       = useState<Record<string, { ltp: number; close: number; chg: number; pct: number }>>({});
   const [page,          setPage]          = useState(1);
   const pageSize = 15;
   const [sidebarTab,          setSidebarTab]          = useState<"watchlist" | "positions" | "holdings" | "orders">("watchlist");
@@ -645,13 +705,37 @@ function Terminal() {
   const [expandedSymbolId,    setExpandedSymbolId]    = useState<string | null>(null);
   const [isSyncingInstruments, setIsSyncingInstruments] = useState(false);
 
+  // Central symbol selection handler: instant state switch with zero lag
+  const selectInstrument = useCallback((newInst: Instrument) => {
+    activeTokenRef.current = newInst.instrumentToken;
+    setInstrument(newInst);
+
+    const token = newInst.instrumentToken;
+    const cached = wPricesRef.current[token] || wPrices[token];
+    const initialLtp = cached?.ltp ?? (newInst.lastPrice ? Number(newInst.lastPrice) : null);
+    const initialClose = cached?.close ?? ((newInst as any).closePrice ? Number((newInst as any).closePrice) : newInst.close ? Number(newInst.close) : null);
+
+    setLtp(initialLtp);
+    setPrevClose(initialClose);
+    setQuote(null);
+
+    // Generate instantaneous fallback bars so chart updates immediately (0ms latency)
+    const to = getISTDayEnd();
+    const days = tf === "day" ? 90 : tf === "15minute" ? 7 : tf === "5minute" ? 4 : 2;
+    const from = getISTDayStart(-days);
+    const fallback = generateClientFallbackBars(newInst, tf, from, to);
+    setBars(fallback);
+  }, [tf, wPrices]);
+
   async function triggerInstrumentSync() {
     setIsSyncingInstruments(true);
     setMsg({ text: "⏳ Syncing full Zerodha market instruments (NSE, NFO, MCX)...", ok: true });
     try {
       const res = await MarketAPI.syncInstruments();
       setMsg({ text: `✓ Synced! Total available in DB: ${res.data.totalInDb.toLocaleString()} instruments`, ok: true });
-      MarketAPI.search(query, segmentFilter, undefined, 100).then((r) => setResults(r.data)).catch(() => {});
+      MarketAPI.search(query, segmentFilter === "ALL" ? undefined : segmentFilter, undefined, 100)
+        .then((r) => setResults(r.data))
+        .catch(() => {});
     } catch (e: any) {
       setMsg({ text: "Failed to sync instruments: " + (e.response?.data?.error || e.message), ok: false });
     } finally {
@@ -694,13 +778,12 @@ function Terminal() {
     }).catch(() => {});
   }, []);
 
-  // Watchlist History Modal state
+  // Modals state
   const [historyItem,    setHistoryItem]    = useState<Instrument | null>(null);
   const [historyTf,      setHistoryTf]      = useState<"day" | "15minute" | "5minute" | "minute">("day");
   const [historyData,    setHistoryData]    = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Watchlist Market Depth Modal state
   const [depthItem,      setDepthItem]      = useState<Instrument | null>(null);
   const [depthQuote,     setDepthQuote]     = useState<FullMarketQuote | null>(null);
   const [depthLoading,   setDepthLoading]   = useState(false);
@@ -721,14 +804,12 @@ function Terminal() {
       .finally(() => setDepthLoading(false));
   }, [depthItem?.instrumentToken]);
 
-  // Watchlist Option Chain Modal state
   const [chainItem,      setChainItem]      = useState<Instrument | null>(null);
   const [chainExpiries,  setChainExpiries]  = useState<string[]>([]);
   const [chainExpiry,    setChainExpiry]    = useState<string>("");
   const [chainRows,      setChainRows]      = useState<any[]>([]);
   const [chainLoading,   setChainLoading]   = useState<boolean>(false);
 
-  // Load available expiries for underlying from database
   useEffect(() => {
     if (!chainItem) {
       setChainExpiries([]);
@@ -753,7 +834,6 @@ function Terminal() {
       });
   }, [chainItem?.tradingSymbol]);
 
-  // Load option chain rows from database/broker
   useEffect(() => {
     if (!chainItem) return;
     setChainLoading(true);
@@ -768,7 +848,6 @@ function Terminal() {
       .finally(() => setChainLoading(false));
   }, [chainItem?.tradingSymbol, chainExpiry]);
 
-  // fetch historical data for modal
   useEffect(() => {
     if (!historyItem) return;
     setHistoryLoading(true);
@@ -781,7 +860,7 @@ function Terminal() {
       .finally(() => setHistoryLoading(false));
   }, [historyItem?.instrumentToken, historyTf]);
 
-  // portfolio refresh
+  // Portfolio refresh
   useEffect(() => {
     PortfolioAPI.get().then((r) => {
       setWallet(Number(r.data.wallet?.cashBalance ?? r.data.wallet?.balance ?? 0));
@@ -792,31 +871,38 @@ function Terminal() {
     OrdersAPI.list().then((r) => setOrders(r.data ?? [])).catch(() => {});
   }, [msg]);
 
-  // REST quote for OHLC chip and Market Depth — fires once per instrument selection
+  // REST quote for OHLC chip and Market Depth with race-condition prevention
   useEffect(() => {
     if (!instrument) return;
-    setQuote(null);
+    const curReq = ++reqIdRef.current;
+    activeTokenRef.current = instrument.instrumentToken;
+
     MarketAPI.quote([instrument.instrumentToken])
       .then((r) => {
+        if (curReq !== reqIdRef.current) return;
         const found = r.data?.[0];
         if (found) {
           setQuote(found);
-          if (!ltp) setLtp(found.lastPrice);
-          if (!prevClose) setPrevClose(found.close);
+          const lastPrice = Number(found.lastPrice || 0);
+          const closeVal = Number(found.close || (found as any).closePrice || 0);
+          if (lastPrice > 0) setLtp(lastPrice);
+          if (closeVal > 0) setPrevClose(closeVal);
         }
-      }).catch(() => {});
+      })
+      .catch(() => {});
   }, [instrument?.instrumentToken]);
 
-  // chart bars
+  // Chart bars fetch with fallback
   useEffect(() => {
     if (!instrument) return;
-    // Use full IST-day end timestamp so bars from the entire trading session
-    // (09:15–15:30 IST) are always included even after market close.
-    const to   = getISTDayEnd();   // today 23:59:59 IST
+    const curReq = reqIdRef.current;
+    const to   = getISTDayEnd();
     const days = tf === "day" ? 90 : tf === "15minute" ? 7 : tf === "5minute" ? 4 : 2;
-    const from = getISTDayStart(-days); // N days ago 09:15 IST
+    const from = getISTDayStart(-days);
+
     MarketAPI.history(instrument.instrumentToken, tf as any, from, to)
       .then((r) => {
+        if (curReq !== reqIdRef.current) return;
         if (r.data && Array.isArray(r.data) && r.data.length > 0) {
           const mapped = r.data.map((b: any) => ({
             time: (new Date(b.timestamp).getTime() / 1000) as any,
@@ -824,128 +910,136 @@ function Terminal() {
           }));
           setBars(mapped);
           if (mapped.length) {
-            setPrevClose(mapped[mapped.length - 1].close);
-            if (!ltp) setLtp(mapped[mapped.length - 1].close);
-          }
-        } else {
-          const fallback = generateClientFallbackBars(instrument, tf, from, to);
-          setBars(fallback);
-          if (fallback.length) {
-            setPrevClose(fallback[fallback.length - 1].close);
-            if (!ltp) setLtp(fallback[fallback.length - 1].close);
+            const lastBar = mapped[mapped.length - 1];
+            setPrevClose((prev) => prev ?? lastBar.close);
+            setLtp((prev) => prev ?? lastBar.close);
           }
         }
-      }).catch(() => {
-        const fallback = generateClientFallbackBars(instrument, tf, from, to);
-        setBars(fallback);
-        if (fallback.length) {
-          setPrevClose(fallback[fallback.length - 1].close);
-          if (!ltp) setLtp(fallback[fallback.length - 1].close);
-        }
-      });
+      })
+      .catch(() => {});
   }, [instrument?.instrumentToken, tf]);
 
-  // WebSocket live price
-  useEffect(() => {
-    if (!instrument) return;
-    const s = getSocket();
-    s.emit("subscribe", [instrument.instrumentToken]);
-    const onTick = (t: Tick) => {
-      if (t.instrumentToken !== instrument.instrumentToken) return;
-      setLtp(t.lastPrice);
-      if (!prevClose && t.close) setPrevClose(t.close);
-    };
-    s.on("tick", onTick);
-    return () => { s.off("tick", onTick); };
-  }, [instrument?.instrumentToken]);
-
-  // watchlist search
+  // Smooth debounced watchlist search
   useEffect(() => {
     setPage(1);
     const t = setTimeout(() => {
-      MarketAPI.search(query, segmentFilter === "ALL" ? undefined : segmentFilter, undefined, 100)
+      MarketAPI.search(deferredQuery, segmentFilter === "ALL" ? undefined : segmentFilter, undefined, 100)
         .then((r) => {
-          setResults(r.data);
-          if (r.data.length > 0) {
-            setInstrument((prev) => {
-              if (!prev || prev.id === "default-nifty50") {
-                const found = r.data.find((d) => d.instrumentToken === "256265") || r.data[0];
-                return found;
-              }
-              return prev;
-            });
-          }
+          setResults(r.data || []);
           const initial: Record<string, { ltp: number; close: number; chg: number; pct: number }> = {};
-          for (const item of r.data) {
+          for (const item of r.data || []) {
             const ltp = Number(item.lastPrice || 0);
             const close = Number((item as any).closePrice || (item as any).close || ltp);
             const chg = Number(((item as any).netChange ?? (close > 0 ? ltp - close : 0)).toFixed(2));
             const pct = Number(((item as any).changePercent ?? (close > 0 ? (chg / close) * 100 : 0)).toFixed(2));
             initial[item.instrumentToken] = { ltp, close, chg, pct };
           }
+          wPricesRef.current = { ...initial, ...wPricesRef.current };
           setWPrices((prev) => ({ ...initial, ...prev }));
         })
         .catch(() => {});
-    }, 200);
+    }, 120);
     return () => clearTimeout(t);
-  }, [query, segmentFilter]);
+  }, [deferredQuery, segmentFilter]);
 
-  // watchlist live prices - subscribe to active / visible instruments
+  // Unified global subscription: includes indices, active symbol, watchlist, positions, holdings, and open modals (depth, history, option chain)
   useEffect(() => {
-    if (!results.length) return;
     const s = getSocket();
-    const tokens = results.slice(0, 30).map((r) => r.instrumentToken);
-    if (instrument && !tokens.includes(instrument.instrumentToken)) {
-      tokens.push(instrument.instrumentToken);
-    }
-    s.emit("subscribe", tokens);
-    const onTick = (t: Tick) =>
-      setWPrices((p) => {
-        const existing = p[t.instrumentToken];
-        const ltp = t.lastPrice;
-        const close = t.close ?? (t as any).closePrice ?? existing?.close ?? ltp;
-        const chg = Number((ltp - close).toFixed(2));
-        const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
-        return {
-          ...p,
-          [t.instrumentToken]: { ltp, close, chg, pct },
-        };
-      });
-    s.on("tick", onTick);
-    return () => { s.off("tick", onTick); s.emit("unsubscribe", tokens); };
-  }, [results, instrument?.instrumentToken]);
-
-  // Live prices for open positions & holdings
-  useEffect(() => {
     const posTokens = positions.map((p) => p.instrument?.instrumentToken).filter(Boolean);
     const holdTokens = holdings.map((h) => h.instrument?.instrumentToken).filter(Boolean);
-    const allTokens = Array.from(new Set([...posTokens, ...holdTokens]));
+    const wlTokens = results.slice(0, 50).map((r) => r.instrumentToken);
+    const activeToken = instrument?.instrumentToken ? [instrument.instrumentToken] : [];
+    const modalTokens = [depthItem?.instrumentToken, chainItem?.instrumentToken, historyItem?.instrumentToken].filter(Boolean) as string[];
+    const chainStrikeTokens = chainRows.flatMap((row) => [row.call?.instrumentToken, row.put?.instrumentToken]).filter(Boolean) as string[];
+
+    const allTokens = Array.from(new Set([...activeToken, ...wlTokens, ...posTokens, ...holdTokens, ...modalTokens, ...chainStrikeTokens]));
     if (!allTokens.length) return;
 
-    const s = getSocket();
+    // Send subscribe to guarantee all tokens are active
     s.emit("subscribe", allTokens);
-    const onTick = (t: Tick) =>
-      setWPrices((p) => {
-        const existing = p[t.instrumentToken];
-        const ltp = t.lastPrice;
-        const close = t.close ?? (t as any).closePrice ?? existing?.close ?? ltp;
-        const chg = Number((ltp - close).toFixed(2));
-        const pct = close > 0 ? Number(((chg / close) * 100).toFixed(2)) : 0;
-        return {
-          ...p,
-          [t.instrumentToken]: { ltp, close, chg, pct },
-        };
-      });
+
+    const onTick = (t: Tick) => {
+      const existing = wPricesRef.current[t.instrumentToken];
+      const ltpVal = t.lastPrice;
+      const closeVal = t.close ?? (t as any).closePrice ?? existing?.close ?? ltpVal;
+      const chgVal = Number((ltpVal - closeVal).toFixed(2));
+      const pctVal = closeVal > 0 ? Number(((chgVal / closeVal) * 100).toFixed(2)) : 0;
+
+      wPricesRef.current[t.instrumentToken] = {
+        ltp: ltpVal,
+        close: closeVal,
+        chg: chgVal,
+        pct: pctVal
+      };
+
+      // Batch React state updates smoothly (every 60ms) to ensure 60fps responsiveness
+      if (!tickFlushTimerRef.current) {
+        tickFlushTimerRef.current = setTimeout(() => {
+          tickFlushTimerRef.current = null;
+          setWPrices({ ...wPricesRef.current });
+
+          if (activeTokenRef.current && wPricesRef.current[activeTokenRef.current]) {
+            const activeData = wPricesRef.current[activeTokenRef.current];
+            setLtp(activeData.ltp);
+            if (activeData.close) setPrevClose(activeData.close);
+          }
+        }, 60);
+      }
+    };
+
     s.on("tick", onTick);
-    return () => { s.off("tick", onTick); };
-  }, [positions, holdings]);
+
+    const onConnect = () => {
+      s.emit("subscribe", allTokens);
+    };
+    s.on("connect", onConnect);
+
+    return () => {
+      if (tickFlushTimerRef.current) {
+        clearTimeout(tickFlushTimerRef.current);
+        tickFlushTimerRef.current = null;
+      }
+      s.off("tick", onTick);
+      s.off("connect", onConnect);
+    };
+  }, [results, positions, holdings, instrument?.instrumentToken, depthItem?.instrumentToken, chainItem?.tradingSymbol, historyItem?.instrumentToken, chainRows]);
+
+  // Tab switching and window visibility sync handler
+  useEffect(() => {
+    const handleTabVisibility = () => {
+      if (document.visibilityState === "visible") {
+        const s = getSocket();
+        if (activeTokenRef.current) {
+          s.emit("subscribe", [activeTokenRef.current]);
+          MarketAPI.quote([activeTokenRef.current])
+            .then((r) => {
+              const found = r.data?.[0];
+              if (found) {
+                setQuote(found);
+                const lp = Number(found.lastPrice || 0);
+                const cp = Number(found.close || (found as any).closePrice || 0);
+                if (lp > 0) setLtp(lp);
+                if (cp > 0) setPrevClose(cp);
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    };
+
+    window.addEventListener("focus", handleTabVisibility);
+    document.addEventListener("visibilitychange", handleTabVisibility);
+    return () => {
+      window.removeEventListener("focus", handleTabVisibility);
+      document.removeEventListener("visibilitychange", handleTabVisibility);
+    };
+  }, []);
 
   async function placeOrder(e: FormEvent) {
     e.preventDefault();
     if (!instrument) return;
     setMsg(null);
 
-    // Enforce Indian market hours before submitting order
     if (marketStatus && !marketStatus.isOpen) {
       setMsg({
         text: `⛔ Market is Closed. Orders can only be placed Monday to Friday between 09:15 AM and 03:30 PM IST. (Current IST: ${marketStatus.currentIstTime || "Closed"})`,
@@ -968,19 +1062,36 @@ function Terminal() {
     }
   }
 
-  const displayLtp   = ltp ?? quote?.lastPrice ?? (instrument?.lastPrice ? Number(instrument.lastPrice) : null);
-  const displayClose = prevClose ?? quote?.close ?? (instrument as any)?.closePrice ?? (instrument as any)?.close ?? null;
+  // Memoized search results and pagination for 0% render lag
+  const filteredResults = useMemo(() => {
+    return results.filter((r) => {
+      if (segmentFilter === "ALL") return true;
+      if (segmentFilter === "NSE") return r.exchange === "NSE" || r.exchange === "BSE" || r.segment === "EQUITY";
+      if (segmentFilter === "NFO") return r.exchange === "NFO" || r.exchange === "BFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
+      if (segmentFilter === "MCX") return r.exchange === "MCX" || r.exchange === "NCO";
+      return true;
+    });
+  }, [results, segmentFilter]);
+
+  const totalPages = Math.ceil(filteredResults.length / pageSize) || 1;
+  const paginatedResults = useMemo(() => {
+    return filteredResults.slice((page - 1) * pageSize, page * pageSize);
+  }, [filteredResults, page, pageSize]);
+
+  const displayLtp   = ltp ?? quote?.lastPrice ?? wPrices[instrument?.instrumentToken || ""]?.ltp ?? (instrument?.lastPrice ? Number(instrument.lastPrice) : null);
+  const displayClose = prevClose ?? quote?.close ?? (quote as any)?.closePrice ?? wPrices[instrument?.instrumentToken || ""]?.close ?? (instrument as any)?.closePrice ?? (instrument as any)?.close ?? null;
   const chg    = displayLtp && displayClose ? displayLtp - displayClose : null;
   const chgPct = chg && displayClose ? (chg / displayClose) * 100 : null;
   const up     = chg !== null ? chg >= 0 : true;
 
-  // Real-time calculation of unrealised floating P&L on all open positions
-  const totalPnl = positions.reduce((s: number, p: any) => {
-    if (!p.quantity || p.quantity === 0) return s;
-    const curPrice = wPrices[p.instrument?.instrumentToken]?.ltp ?? p.ltp ?? Number(p.instrument?.lastPrice || p.avgPrice);
-    const pnl = p.quantity * (curPrice - Number(p.avgPrice));
-    return s + pnl;
-  }, 0);
+  const totalPnl = useMemo(() => {
+    return positions.reduce((s: number, p: any) => {
+      if (!p.quantity || p.quantity === 0) return s;
+      const curPrice = wPrices[p.instrument?.instrumentToken]?.ltp ?? p.ltp ?? Number(p.instrument?.lastPrice || p.avgPrice);
+      const pnl = p.quantity * (curPrice - Number(p.avgPrice));
+      return s + pnl;
+    }, 0);
+  }, [positions, wPrices]);
 
   const deployedPct = wallet && wallet > 0 ? Math.min(100, positions.reduce((s: number, p: any) => s + Math.abs(+p.quantity) * +(p.averagePrice ?? p.avgPrice ?? 0), 0) / wallet * 100) : 0;
   const margin      = instrument && displayLtp ? (Number(displayLtp) * qty * (instrument.lotSize || 1) * (ptype === "DELIVERY" ? 1.0 : 0.2)) : 0;
@@ -988,7 +1099,6 @@ function Terminal() {
   return (
     <div className="t-root" data-theme={theme}>
       <TickerBar marketStatus={marketStatus} />
-      <KiteStatusBar />
 
       {/* ── Navbar ── */}
       <nav className="t-nav">
@@ -1073,11 +1183,9 @@ function Terminal() {
         {/* ══ LEFT SIDEBAR ══ */}
         <aside className="t-sidebar" style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-surface)", borderRight: "1px solid var(--border)", overflow: "hidden" }}>
           
-          {/* Top Modern Header (Expanded vs Collapsed) */}
           {isSidebarCollapsed ? (
             /* COLLAPSED MODE (58px Icon Sidebar) */
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", gap: 12 }}>
-              {/* Expand Toggle Button */}
               <button
                 onClick={() => setIsSidebarCollapsed(false)}
                 title="Expand Sidebar"
@@ -1092,7 +1200,6 @@ function Terminal() {
 
               <div style={{ width: 32, height: 1, background: "var(--border)", margin: "2px 0" }} />
 
-              {/* Watchlist Icon */}
               <button
                 onClick={() => { setSidebarTab("watchlist"); setIsSidebarCollapsed(false); }}
                 title="Watchlist"
@@ -1106,7 +1213,6 @@ function Terminal() {
                 ⭐
               </button>
 
-              {/* Positions Icon */}
               <button
                 onClick={() => { setSidebarTab("positions"); setIsSidebarCollapsed(false); }}
                 title="Open Positions"
@@ -1126,7 +1232,6 @@ function Terminal() {
                 )}
               </button>
 
-              {/* Holdings Icon */}
               <button
                 onClick={() => { setSidebarTab("holdings"); setIsSidebarCollapsed(false); }}
                 title="Holdings (Delivery CNC)"
@@ -1146,7 +1251,6 @@ function Terminal() {
                 )}
               </button>
 
-              {/* Orders Icon */}
               <button
                 onClick={() => { setSidebarTab("orders"); setIsSidebarCollapsed(false); }}
                 title="Recent Orders"
@@ -1235,7 +1339,6 @@ function Terminal() {
                   </button>
                 </div>
 
-                {/* Collapse Sidebar Button */}
                 <button
                   onClick={() => setIsSidebarCollapsed(true)}
                   title="Collapse Left Sidebar"
@@ -1253,7 +1356,6 @@ function Terminal() {
               {/* Tab Content: WATCHLIST */}
               {sidebarTab === "watchlist" && (
                 <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
-                  {/* Watchlist Header & Sync Button */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -1311,222 +1413,202 @@ function Terminal() {
                   </div>
 
                   {/* Watchlist Symbol Accordion Cards */}
-                  {(() => {
-                    const filteredResults = results.filter((r) => {
-                      if (segmentFilter === "ALL") return true;
-                      if (segmentFilter === "NSE") return r.exchange === "NSE" || r.exchange === "BSE" || r.segment === "EQUITY";
-                      if (segmentFilter === "NFO") return r.exchange === "NFO" || r.exchange === "BFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
-                      if (segmentFilter === "MCX") return r.exchange === "MCX" || r.exchange === "NCO";
-                      return true;
-                    });
+                  <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+                    <div style={{ flex: 1, overflowY: "auto", paddingRight: 2 }}>
+                      {paginatedResults.length === 0 ? (
+                        <div style={{ padding: "30px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+                          No symbols matching filter
+                        </div>
+                      ) : (
+                        paginatedResults.map((r) => {
+                          const pData = wPrices[r.instrumentToken];
+                          const ltp = pData?.ltp ?? Number(r.lastPrice ?? 0);
+                          const close = pData?.close ?? Number((r as any).closePrice ?? (r as any).close ?? ltp);
+                          const chg = pData?.chg ?? Number(((r as any).netChange ?? (close > 0 ? ltp - close : 0)).toFixed(2));
+                          const pct = pData?.pct ?? Number(((r as any).changePercent ?? (close > 0 ? (chg / close) * 100 : 0)).toFixed(2));
+                          const up = chg >= 0;
 
-                    const totalPages = Math.ceil(filteredResults.length / pageSize) || 1;
-                    const paginatedResults = filteredResults.slice((page - 1) * pageSize, page * pageSize);
+                          const sel = instrument?.id === r.id;
+                          const isExpanded = expandedSymbolId === r.id;
+                          const isNFO = r.exchange === "NFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
+                          const isMCX = r.exchange === "MCX";
+                          const tagClass = isNFO ? "nfo" : isMCX ? "mcx" : "nse";
 
-                    return (
-                      <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
-                        <div style={{ flex: 1, overflowY: "auto", paddingRight: 2 }}>
-                          {paginatedResults.length === 0 ? (
-                            <div style={{ padding: "30px 10px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-                              No symbols matching filter
-                            </div>
-                          ) : (
-                            paginatedResults.map((r) => {
-                              const pData = wPrices[r.instrumentToken];
-                              const ltp = pData?.ltp ?? Number(r.lastPrice ?? 0);
-                              const close = pData?.close ?? Number((r as any).closePrice ?? (r as any).close ?? ltp);
-                              const chg = pData?.chg ?? Number(((r as any).netChange ?? (close > 0 ? ltp - close : 0)).toFixed(2));
-                              const pct = pData?.pct ?? Number(((r as any).changePercent ?? (close > 0 ? (chg / close) * 100 : 0)).toFixed(2));
-                              const up = chg >= 0;
-
-                              const sel = instrument?.id === r.id;
-                              const isExpanded = expandedSymbolId === r.id;
-                              const isNFO = r.exchange === "NFO" || String(r.segment) === "FUTURES" || String(r.segment) === "OPTIONS";
-                              const isMCX = r.exchange === "MCX";
-                              const tagClass = isNFO ? "nfo" : isMCX ? "mcx" : "nse";
-
-                              return (
-                                <div
-                                  key={r.id}
-                                  className={`t-sym-card ${sel ? "selected" : ""}`}
-                                >
-                                  {/* Main Row Header */}
-                                  <div
-                                    onClick={() => {
-                                      setInstrument(r);
-                                      setExpandedSymbolId(isExpanded ? null : r.id);
-                                    }}
-                                    style={{
-                                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                                      padding: "9px 10px", cursor: "pointer"
-                                    }}
-                                  >
-                                    <div style={{ minWidth: 0, flex: 1, paddingRight: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                                      <span style={{ fontSize: 10, color: "var(--text-muted)", transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
-                                        ▶
-                                      </span>
-                                      <div>
-                                        <div style={{
-                                          fontWeight: 800, fontSize: 13,
-                                          color: "var(--text-primary)",
-                                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
-                                        }}>
-                                          {r.tradingSymbol}
-                                        </div>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                                          <span className={`t-sym-tag ${tagClass}`}>
-                                            {r.exchange}
-                                          </span>
-                                          <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>
-                                            {r.segment}
-                                          </span>
-                                        </div>
-                                      </div>
+                          return (
+                            <div
+                              key={r.id}
+                              className={`t-sym-card ${sel ? "selected" : ""}`}
+                            >
+                              <div
+                                onClick={() => {
+                                  selectInstrument(r);
+                                  setExpandedSymbolId(isExpanded ? null : r.id);
+                                }}
+                                style={{
+                                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                                  padding: "9px 10px", cursor: "pointer"
+                                }}
+                              >
+                                <div style={{ minWidth: 0, flex: 1, paddingRight: 6, display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ fontSize: 10, color: "var(--text-muted)", transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
+                                    ▶
+                                  </span>
+                                  <div>
+                                    <div style={{
+                                      fontWeight: 800, fontSize: 13,
+                                      color: "var(--text-primary)",
+                                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"
+                                    }}>
+                                      {r.tradingSymbol}
                                     </div>
-
-                                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                                      <div style={{
-                                        fontWeight: 800, fontSize: 13, fontFamily: "var(--font-mono)",
-                                        color: ltp > 0 ? (up ? "var(--green)" : "var(--red)") : "var(--text-secondary)"
-                                      }}>
-                                        {ltp > 0 ? `₹${ltp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
-                                      </div>
-                                      <div style={{
-                                        fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700,
-                                        color: up ? "var(--green)" : "var(--red)",
-                                        marginTop: 1
-                                      }}>
-                                        {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
-                                      </div>
-                                      <div style={{
-                                        fontSize: 9, fontFamily: "var(--font-mono)",
-                                        color: "var(--text-muted)",
-                                        marginTop: 2
-                                      }}>
-                                        Close: ₹{close > 0 ? close.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
-                                      </div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                                      <span className={`t-sym-tag ${tagClass}`}>
+                                        {r.exchange}
+                                      </span>
+                                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>
+                                        {r.segment}
+                                      </span>
                                     </div>
                                   </div>
-
-                                  {/* Expandable Accordion Drawer */}
-                                  {isExpanded && (
-                                    <div style={{
-                                      padding: "8px 10px 10px",
-                                      background: "var(--bg-elevated)",
-                                      borderTop: "1px solid var(--border)",
-                                      display: "flex", flexDirection: "column", gap: 6
-                                    }}>
-                                      {/* Quick Price Summary Bar */}
-                                      <div style={{
-                                        display: "flex", justifyContent: "space-between", alignItems: "center",
-                                        padding: "5px 8px",
-                                        background: "var(--bg-surface)",
-                                        border: "1px solid var(--border)",
-                                        borderRadius: 5,
-                                        fontSize: 10, fontFamily: "var(--font-mono)",
-                                        color: "var(--text-secondary)"
-                                      }}>
-                                        <span>Last: <strong style={{ color: up ? "var(--green)" : "var(--red)" }}>₹{ltp.toFixed(2)}</strong></span>
-                                        <span>Close: <strong style={{ color: "var(--text-primary)" }}>₹{close.toFixed(2)}</strong></span>
-                                        <span style={{ color: up ? "var(--green)" : "var(--red)", fontWeight: 700 }}>
-                                          {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
-                                        </span>
-                                      </div>
-
-                                      {/* Quick Order Actions */}
-                                      <div style={{ display: "flex", gap: 6 }}>
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); setInstrument(r); setSide("BUY"); }}
-                                          style={{
-                                            flex: 1, padding: "6px", borderRadius: 6, border: "none",
-                                            background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff",
-                                            fontWeight: 800, fontSize: 11, cursor: "pointer", boxShadow: "0 2px 8px rgba(22, 163, 74, 0.3)"
-                                          }}
-                                        >
-                                          🟢 BUY
-                                        </button>
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); setInstrument(r); setSide("SELL"); }}
-                                          style={{
-                                            flex: 1, padding: "6px", borderRadius: 6, border: "none",
-                                            background: "linear-gradient(135deg, #dc2626, #b91c1c)", color: "#fff",
-                                            fontWeight: 800, fontSize: 11, cursor: "pointer", boxShadow: "0 2px 8px rgba(220, 38, 38, 0.3)"
-                                          }}
-                                        >
-                                          🔴 SELL
-                                        </button>
-                                      </div>
-
-                                      {/* Expanded Analytics Tools */}
-                                      <div style={{ display: "flex", gap: 5 }}>
-                                        <button
-                                          title="View Option Chain"
-                                          onClick={(e) => { e.stopPropagation(); setChainItem(r); }}
-                                          className="app-btn-outline"
-                                          style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
-                                        >
-                                          ⛓️ Option Chain
-                                        </button>
-
-                                        <button
-                                          title="View Market Depth (Level 2)"
-                                          onClick={(e) => { e.stopPropagation(); setDepthItem(r); }}
-                                          className="app-btn-outline"
-                                          style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
-                                        >
-                                          📖 Depth
-                                        </button>
-
-                                        <button
-                                          title="View Historical Market Data"
-                                          onClick={(e) => { e.stopPropagation(); setHistoryItem(r); }}
-                                          className="app-btn-outline"
-                                          style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
-                                        >
-                                          📊 History
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
                                 </div>
-                              );
-                            })
-                          )}
-                        </div>
 
-                        {/* Modern Watchlist Pagination */}
-                        {totalPages > 1 && (
-                          <div style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            padding: "8px 4px 2px", marginTop: 6, borderTop: "1px solid var(--border)",
-                            fontSize: 11, color: "var(--text-secondary)"
-                          }}>
-                            <button
-                              onClick={() => setPage((p) => Math.max(p - 1, 1))}
-                              disabled={page === 1}
-                              className="app-btn-outline"
-                              style={{ padding: "4px 10px", fontSize: 11, opacity: page === 1 ? 0.4 : 1 }}
-                            >
-                              ← Prev
-                            </button>
+                                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                                  <div style={{
+                                    fontWeight: 800, fontSize: 13, fontFamily: "var(--font-mono)",
+                                    color: ltp > 0 ? (up ? "var(--green)" : "var(--red)") : "var(--text-secondary)"
+                                  }}>
+                                    {ltp > 0 ? `₹${ltp.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                                  </div>
+                                  <div style={{
+                                    fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700,
+                                    color: up ? "var(--green)" : "var(--red)",
+                                    marginTop: 1
+                                  }}>
+                                    {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
+                                  </div>
+                                  <div style={{
+                                    fontSize: 9, fontFamily: "var(--font-mono)",
+                                    color: "var(--text-muted)",
+                                    marginTop: 2
+                                  }}>
+                                    Close: ₹{close > 0 ? close.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                                  </div>
+                                </div>
+                              </div>
 
-                            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>
-                              Page {page} of {totalPages} ({filteredResults.length})
-                            </span>
+                              {/* Expandable Accordion Drawer */}
+                              {isExpanded && (
+                                <div style={{
+                                  padding: "8px 10px 10px",
+                                  background: "var(--bg-elevated)",
+                                  borderTop: "1px solid var(--border)",
+                                  display: "flex", flexDirection: "column", gap: 6
+                                }}>
+                                  <div style={{
+                                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                                    padding: "5px 8px",
+                                    background: "var(--bg-surface)",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: 5,
+                                    fontSize: 10, fontFamily: "var(--font-mono)",
+                                    color: "var(--text-secondary)"
+                                  }}>
+                                    <span>Last: <strong style={{ color: up ? "var(--green)" : "var(--red)" }}>₹{ltp.toFixed(2)}</strong></span>
+                                    <span>Close: <strong style={{ color: "var(--text-primary)" }}>₹{close.toFixed(2)}</strong></span>
+                                    <span style={{ color: up ? "var(--green)" : "var(--red)", fontWeight: 700 }}>
+                                      {up ? "+" : ""}{chg.toFixed(2)} ({up ? "+" : ""}{pct.toFixed(2)}%)
+                                    </span>
+                                  </div>
 
-                            <button
-                              onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-                              disabled={page === totalPages}
-                              className="app-btn-outline"
-                              style={{ padding: "4px 10px", fontSize: 11, opacity: page === totalPages ? 0.4 : 1 }}
-                            >
-                              Next →
-                            </button>
-                          </div>
-                        )}
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); selectInstrument(r); setSide("BUY"); }}
+                                      style={{
+                                        flex: 1, padding: "6px", borderRadius: 6, border: "none",
+                                        background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff",
+                                        fontWeight: 800, fontSize: 11, cursor: "pointer", boxShadow: "0 2px 8px rgba(22, 163, 74, 0.3)"
+                                      }}
+                                    >
+                                      🟢 BUY
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); selectInstrument(r); setSide("SELL"); }}
+                                      style={{
+                                        flex: 1, padding: "6px", borderRadius: 6, border: "none",
+                                        background: "linear-gradient(135deg, #dc2626, #b91c1c)", color: "#fff",
+                                        fontWeight: 800, fontSize: 11, cursor: "pointer", boxShadow: "0 2px 8px rgba(220, 38, 38, 0.3)"
+                                      }}
+                                    >
+                                      🔴 SELL
+                                    </button>
+                                  </div>
+
+                                  <div style={{ display: "flex", gap: 5 }}>
+                                    <button
+                                      title="View Option Chain"
+                                      onClick={(e) => { e.stopPropagation(); setChainItem(r); }}
+                                      className="app-btn-outline"
+                                      style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
+                                    >
+                                      ⛓️ Option Chain
+                                    </button>
+
+                                    <button
+                                      title="View Market Depth (Level 2)"
+                                      onClick={(e) => { e.stopPropagation(); setDepthItem(r); }}
+                                      className="app-btn-outline"
+                                      style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
+                                    >
+                                      📖 Depth
+                                    </button>
+
+                                    <button
+                                      title="View Historical Market Data"
+                                      onClick={(e) => { e.stopPropagation(); setHistoryItem(r); }}
+                                      className="app-btn-outline"
+                                      style={{ flex: 1, padding: "5px 4px", fontSize: 10, fontWeight: 700 }}
+                                    >
+                                      📊 History
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {totalPages > 1 && (
+                      <div style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "8px 4px 2px", marginTop: 6, borderTop: "1px solid var(--border)",
+                        fontSize: 11, color: "var(--text-secondary)"
+                      }}>
+                        <button
+                          onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                          disabled={page === 1}
+                          className="app-btn-outline"
+                          style={{ padding: "4px 10px", fontSize: 11, opacity: page === 1 ? 0.4 : 1 }}
+                        >
+                          ← Prev
+                        </button>
+
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>
+                          Page {page} of {totalPages} ({filteredResults.length})
+                        </span>
+
+                        <button
+                          onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+                          disabled={page === totalPages}
+                          className="app-btn-outline"
+                          style={{ padding: "4px 10px", fontSize: 11, opacity: page === totalPages ? 0.4 : 1 }}
+                        >
+                          Next →
+                        </button>
                       </div>
-                    );
-                  })()}
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1559,7 +1641,7 @@ function Terminal() {
                         <div
                           key={p.id || i}
                           className={`t-pos-card ${isProfit ? "profit" : "loss"}`}
-                          onClick={() => p.instrument && setInstrument(p.instrument)}
+                          onClick={() => p.instrument && selectInstrument(p.instrument)}
                         >
                           <div className="t-pos-header">
                             <div>
@@ -1582,7 +1664,7 @@ function Terminal() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (p.instrument) setInstrument(p.instrument);
+                                if (p.instrument) selectInstrument(p.instrument);
                                 setSide(p.quantity > 0 ? "SELL" : "BUY");
                                 setPtype(p.productType || "INTRADAY");
                                 setOtype("MARKET");
@@ -1682,7 +1764,7 @@ function Terminal() {
                         <div
                           key={h.id || i}
                           className="t-holding-card"
-                          onClick={() => h.instrument && setInstrument(h.instrument)}
+                          onClick={() => h.instrument && selectInstrument(h.instrument)}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                             <div>
@@ -1710,7 +1792,7 @@ function Terminal() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (h.instrument) setInstrument(h.instrument);
+                                if (h.instrument) selectInstrument(h.instrument);
                                 setSide("SELL");
                                 setPtype("DELIVERY");
                                 setOtype("MARKET");
@@ -1904,7 +1986,7 @@ function Terminal() {
               <label className="t-lbl">Symbol</label>
               <select className="t-select" value={instrument?.id ?? ""} onChange={(e) => {
                 const f = results.find((r) => r.id === e.target.value);
-                if (f) setInstrument(f);
+                if (f) selectInstrument(f);
               }}>
                 <option value="">{instrument ? instrument.tradingSymbol : "— select from watchlist —"}</option>
                 {results.map((r) => <option key={r.id} value={r.id}>{r.tradingSymbol}</option>)}
@@ -2032,8 +2114,6 @@ function Terminal() {
       {historyItem && (
         <div className="t-modal-overlay" onClick={() => setHistoryItem(null)}>
           <div className="t-modal-card" onClick={(e) => e.stopPropagation()}>
-            
-            {/* Modal Header */}
             <div className="t-modal-header">
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -2049,7 +2129,6 @@ function Terminal() {
                 </div>
               </div>
 
-              {/* Timeframe selector & Close */}
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ display: "flex", background: "var(--bg-elevated)", borderRadius: 8, padding: 3, border: "1px solid var(--border)" }}>
                   {[["day", "1D"], ["15minute", "15m"], ["5minute", "5m"], ["minute", "1m"]].map(([v, l]) => (
@@ -2078,7 +2157,6 @@ function Terminal() {
               </div>
             </div>
 
-            {/* Summary Stat Cards */}
             {(() => {
               const highs = historyData.map((d: any) => Number(d.high || 0)).filter(Boolean);
               const lows = historyData.map((d: any) => Number(d.low || 0)).filter(Boolean);
@@ -2110,7 +2188,7 @@ function Terminal() {
                     </div>
                   </div>
                   <div className="t-stat-card">
-                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.05em" }}>Total Candles</div>
+                    <div style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-primary)", fontWeight: 700, letterSpacing: "0.05em" }}>Total Candles</div>
                     <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)", marginTop: 4, fontFamily: "var(--font-mono)" }}>
                       {historyData.length} records
                     </div>
@@ -2119,7 +2197,6 @@ function Terminal() {
               );
             })()}
 
-            {/* Historical Data Table */}
             <div className="t-modal-table-wrap">
               {historyLoading ? (
                 <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
@@ -2169,11 +2246,10 @@ function Terminal() {
               )}
             </div>
 
-            {/* Modal Actions Footer */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
               <button
                 onClick={() => {
-                  setInstrument(historyItem);
+                  selectInstrument(historyItem);
                   setHistoryItem(null);
                 }}
                 style={{
@@ -2218,7 +2294,6 @@ function Terminal() {
         return (
           <div className="t-modal-overlay" onClick={() => setDepthItem(null)}>
             <div className="t-modal-card" style={{ maxWidth: 640, padding: 0 }} onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
                 padding: "16px 20px", borderBottom: "1px solid var(--border)",
@@ -2255,7 +2330,6 @@ function Terminal() {
                 </div>
               </div>
 
-              {/* Buy / Sell Liquidity Meter Bar */}
               <div style={{ padding: "14px 20px", background: "var(--bg-base)", borderBottom: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
                   <span style={{ color: "var(--green)" }}>BUY {buyPct}% ({totalBidQty.toLocaleString()} Qty)</span>
@@ -2266,9 +2340,7 @@ function Terminal() {
                 </div>
               </div>
 
-              {/* Depth Grid (Bids vs Asks) */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "var(--border)" }}>
-                {/* Bids Column */}
                 <div className="t-depth-side-col">
                   <div style={{ fontSize: 11, fontWeight: 800, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid var(--green-border)" }}>
                     Bids (Buyers)
@@ -2305,7 +2377,6 @@ function Terminal() {
                   </div>
                 </div>
 
-                {/* Asks Column */}
                 <div className="t-depth-side-col">
                   <div style={{ fontSize: 11, fontWeight: 800, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid var(--red-border)" }}>
                     Asks (Sellers)
@@ -2343,7 +2414,6 @@ function Terminal() {
                 </div>
               </div>
 
-              {/* Circuit Limits & Info */}
               <div className="t-depth-circuits">
                 <div className="t-stat-card">
                   <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>Lower Circuit</div>
@@ -2365,11 +2435,10 @@ function Terminal() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div style={{ display: "flex", gap: 10, padding: "14px 20px", borderTop: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
                 <button
                   onClick={() => {
-                    setInstrument(depthItem);
+                    selectInstrument(depthItem);
                     setSide("BUY");
                     setDepthItem(null);
                   }}
@@ -2383,7 +2452,7 @@ function Terminal() {
                 </button>
                 <button
                   onClick={() => {
-                    setInstrument(depthItem);
+                    selectInstrument(depthItem);
                     setSide("SELL");
                     setDepthItem(null);
                   }}
@@ -2420,7 +2489,6 @@ function Terminal() {
         return (
           <div className="t-modal-overlay" onClick={() => setChainItem(null)}>
             <div className="t-modal-card" style={{ maxWidth: 1100, padding: 0 }} onClick={(e) => e.stopPropagation()}>
-              {/* Header */}
               <div style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
                 padding: "16px 22px", borderBottom: "1px solid var(--border)",
@@ -2443,7 +2511,6 @@ function Terminal() {
                   </div>
                 </div>
 
-                {/* Expiry Selector & Close */}
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Expiry:</span>
@@ -2472,7 +2539,6 @@ function Terminal() {
                 </div>
               </div>
 
-              {/* Sentiment & PCR Banner */}
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "10px 22px",
@@ -2502,7 +2568,6 @@ function Terminal() {
                 </div>
               </div>
 
-              {/* Option Chain Table Header (CALLS | STRIKE | PUTS) */}
               <div style={{ flex: 1, overflowY: "auto", background: "var(--bg-surface)" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                   <thead style={{ position: "sticky", top: 0, background: "var(--bg-elevated)", zIndex: 5 }}>
@@ -2518,18 +2583,13 @@ function Terminal() {
                       </th>
                     </tr>
                     <tr style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)", fontSize: 10, background: "var(--bg-elevated)" }}>
-                      {/* Calls Headers */}
                       <th style={{ padding: "6px 8px", textAlign: "left" }}>Action</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>OI</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Volume</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>IV %</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Chg %</th>
                       <th style={{ padding: "6px 8px", textAlign: "right", color: "var(--green)", borderRight: "1px solid var(--border)" }}>LTP (₹)</th>
-
-                      {/* Strike Header */}
                       <th style={{ padding: "6px 12px", textAlign: "center", color: "var(--yellow)", background: "var(--yellow-bg)", borderRight: "1px solid var(--border)" }}>Price (₹)</th>
-
-                      {/* Puts Headers */}
                       <th style={{ padding: "6px 8px", textAlign: "left", color: "var(--red)" }}>LTP (₹)</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Chg %</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>IV %</th>
@@ -2571,12 +2631,11 @@ function Terminal() {
                               transition: "background 0.1s"
                             }}
                           >
-                            {/* Calls Data */}
                             <td style={{ padding: "7px 8px", background: callBg }}>
                               {row.call ? (
                                 <button
                                   onClick={() => {
-                                    setInstrument({
+                                    selectInstrument({
                                       id: row.call.instrumentToken || `${chainItem.id}-${strike}-CE`,
                                       instrumentToken: row.call.instrumentToken || `${chainItem.instrumentToken}`,
                                       tradingSymbol: row.call.tradingSymbol || `${chainItem.tradingSymbol}${strike}CE`,
@@ -2614,7 +2673,6 @@ function Terminal() {
                               {callLtp > 0 ? `₹${callLtp.toFixed(2)}` : "—"}
                             </td>
 
-                            {/* Strike Price Column */}
                             <td style={{
                               padding: "7px 12px", textAlign: "center", fontWeight: 800,
                               color: isATM ? "var(--yellow)" : "var(--text-primary)", background: strikeBg,
@@ -2623,7 +2681,6 @@ function Terminal() {
                               {strike} {isATM && <span style={{ fontSize: 9, background: "var(--yellow)", color: "#000", padding: "1px 4px", borderRadius: 3, marginLeft: 4, fontWeight: 900 }}>ATM</span>}
                             </td>
 
-                            {/* Puts Data */}
                             <td style={{ padding: "7px 8px", textAlign: "left", fontWeight: 800, color: "var(--red)", fontFamily: "var(--font-mono)", background: putBg }}>
                               {putLtp > 0 ? `₹${putLtp.toFixed(2)}` : "—"}
                             </td>
@@ -2643,7 +2700,7 @@ function Terminal() {
                               {row.put ? (
                                 <button
                                   onClick={() => {
-                                    setInstrument({
+                                    selectInstrument({
                                       id: row.put.instrumentToken || `${chainItem.id}-${strike}-PE`,
                                       instrumentToken: row.put.instrumentToken || `${chainItem.instrumentToken}`,
                                       tradingSymbol: row.put.tradingSymbol || `${chainItem.tradingSymbol}${strike}PE`,
@@ -2673,7 +2730,6 @@ function Terminal() {
                 </table>
               </div>
 
-              {/* Footer Actions */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 22px", borderTop: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   💡 Click <strong>BUY CE</strong> or <strong>BUY PE</strong> on any strike to immediately load the option contract into the Order Form.
@@ -2695,9 +2751,7 @@ function Terminal() {
   );
 }
 
-// ── Error Boundary to prevent page breaking across prod, qc, uat, beta, dev ──
-import React from "react";
-
+// ── Error Boundary ───────────────────────────────────────────
 class TerminalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: any) {
     super(props);

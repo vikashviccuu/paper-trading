@@ -63,6 +63,24 @@ export default function AdminContestDetail() {
     }
   }
 
+  async function recomputeScores() {
+    if (!id) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await AdminContestsAPI.recomputeScores(id);
+      setMessage({
+        text: `Leaderboard scores recomputed successfully (${res.data?.recomputed ?? 0} participants updated).`,
+        type: "success",
+      });
+      load();
+    } catch (err: any) {
+      setMessage({ text: err.response?.data?.error ?? "Could not recompute scores", type: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function endNow() {
     if (!id) return;
     if (!confirm("This immediately force-closes every participant's open positions/holdings at current market price and locks the final leaderboard. Continue?")) return;
@@ -238,6 +256,35 @@ export default function AdminContestDetail() {
 
           {/* Quick Action Buttons */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {contest.status === "ACTIVE" && (
+              <button
+                onClick={recomputeScores}
+                disabled={busy}
+                title="Force-recompute leaderboard scores (Return %, Risk Volatility, Max Drawdown %, Composite Score) for all participants"
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(96, 165, 250, 0.4)",
+                  background: "linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(30, 64, 175, 0.3))",
+                  color: "#60a5fa",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: busy ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  boxShadow: "0 4px 16px rgba(37, 99, 235, 0.2)",
+                  transition: "all 0.15s",
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+                {busy ? "Recomputing..." : "Recompute Scores"}
+              </button>
+            )}
+
             {contest.status === "ACTIVE" && (
               <button
                 onClick={endNow}
@@ -486,7 +533,10 @@ export default function AdminContestDetail() {
                   Return %
                 </th>
                 <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
-                  Risk Score
+                  Risk (Volatility)
+                </th>
+                <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
+                  Max Drawdown %
                 </th>
                 <th style={{ padding: "12px 14px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>
                   Composite Score
@@ -620,7 +670,25 @@ export default function AdminContestDetail() {
                             color: "var(--text-secondary)",
                           }}
                         >
-                          {Number(p.riskScore).toFixed(2)}
+                          {Number(p.riskScore).toFixed(2)}%
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td style={{ padding: "14px 14px", textAlign: "center" }}>
+                      {p.maxDrawdownPct != null ? (
+                        <span
+                          style={{
+                            background: "rgba(248, 81, 73, 0.1)",
+                            color: "#f85149",
+                            padding: "2px 8px",
+                            borderRadius: 6,
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {Number(p.maxDrawdownPct).toFixed(2)}%
                         </span>
                       ) : (
                         "-"
@@ -651,7 +719,7 @@ export default function AdminContestDetail() {
 
               {(!contest.participants || contest.participants.length === 0) && (
                 <tr>
-                  <td colSpan={7} style={{ padding: 40, textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
+                  <td colSpan={8} style={{ padding: 40, textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>
                     No traders have joined this contest yet.
                   </td>
                 </tr>

@@ -45,8 +45,11 @@ export function isMarketOpen(exchange: string = "NSE"): {
   marketCloseTime: string;
   currentIstTime: string;
 } {
-  // Allow overriding in .env for development / staging tests
-  if (process.env.ALLOW_AFTER_HOURS_TRADING === "true") {
+  const currentEnv = (process.env.APP_ENV || process.env.NODE_ENV || "development").toLowerCase();
+  const isTestingEnv = ["local", "development", "dev", "qc", "uat", "staging"].includes(currentEnv);
+
+  // Allow after-hours trading for testing in local, dev, qc, uat unless explicitly enforced
+  if (process.env.ALLOW_AFTER_HOURS_TRADING === "true" || (isTestingEnv && process.env.ENFORCE_MARKET_HOURS !== "true")) {
     return {
       isOpen: true,
       marketOpenTime: "09:15",

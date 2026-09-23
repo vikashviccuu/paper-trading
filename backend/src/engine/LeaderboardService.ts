@@ -64,11 +64,19 @@ export class LeaderboardService {
           currentNav = Number(p.cashBalance) + Number(p.marginUsed);
         }
 
-        const snapshotNavs = p.snapshots.map((s) => Number(s.nav));
-        const series: number[] = [startingCash, ...snapshotNavs];
-        
+        const snapshotNavs = p.snapshots
+          .map((s) => Number(s.nav))
+          .filter((n) => !isNaN(n) && n > 0);
+
+        const series: number[] = [];
+        if (snapshotNavs.length === 0) {
+          series.push(startingCash);
+        } else {
+          series.push(...snapshotNavs);
+        }
+
         // Append current live NAV if it's new or not yet captured in snapshots
-        if (snapshotNavs.length === 0 || Math.abs(snapshotNavs[snapshotNavs.length - 1] - currentNav) > 0.01) {
+        if (series.length === 0 || Math.abs(series[series.length - 1] - currentNav) > 0.01) {
           series.push(currentNav);
         }
 
@@ -169,6 +177,10 @@ export function volatilityPct(navSeries: number[]): number {
     const prev = navSeries[i - 1];
     if (prev <= 0) continue;
     returns.push(((navSeries[i] - prev) / prev) * 100);
+  }
+  if (returns.length === 0) return 0;
+  if (returns.length === 1) {
+    return Math.abs(returns[0]);
   }
   return stddev(returns);
 }

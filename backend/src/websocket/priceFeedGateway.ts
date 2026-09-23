@@ -10,7 +10,7 @@ import { isMarketOpen } from "../utils/marketHours";
 /**
  * Fan-out layer between the broker tick stream and browser clients.
  * Caches latest ticks and provides instant emission upon subscription.
- * When market is closed, prices remain rock-solid and do not fluctuate.
+ * Ensures multi-subscriber resilience so modals and symbols never stop ticking.
  */
 export function initPriceFeedGateway(httpServer: HttpServer) {
   const io = new SocketIOServer(httpServer, {
@@ -46,8 +46,7 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
     };
   }
 
-  // Single global heartbeat ticker: runs once per second across all active tokens
-  // Avoids spawning separate intervals per token and prevents memory leaks
+  // Global heartbeat ticker: runs once per second across all active tokens
   const globalHeartbeat = setInterval(() => {
     if (subscriberCounts.size === 0) return;
     const now = Date.now();
@@ -56,8 +55,8 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
       if (count <= 0) continue;
       const lastSeen = lastTickTimes.get(token) ?? 0;
 
-      // If no broker tick was received in the last 2 seconds, emit heartbeat
-      if (now - lastSeen > 2000) {
+      // If no broker tick was received in the last 1.5 seconds, emit heartbeat
+      if (now - lastSeen > 1500) {
         const meta = tokenMetadata.get(token);
         let lastPrice = meta?.lastPrice ?? latestQuoteCache.get(token)?.lastPrice ?? 0;
 
@@ -89,8 +88,12 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
     const subscribedTokens = new Set<string>();
 
     socket.on("subscribe", async (tokens: string[]) => {
+      if (!Array.isArray(tokens) || tokens.length === 0) return;
       const broker = getBrokerAdapter();
+
       for (const token of tokens) {
+        if (!token) continue;
+
         // Send cached quote immediately if available
         const cached = latestQuoteCache.get(token);
         if (cached) {
@@ -131,7 +134,6 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
         subscriberCounts.set(token, count + 1);
 
         if (count === 0) {
-          // First subscriber for this token -> open the broker stream
           try {
             await broker.subscribeTicks([token], (quote) => {
               const fullQuote = {
@@ -154,18 +156,19 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
     });
 
     socket.on("unsubscribe", async (tokens: string[]) => {
+      if (!Array.isArray(tokens) || tokens.length === 0) return;
       const broker = getBrokerAdapter();
       for (const token of tokens) {
         if (!subscribedTokens.has(token)) continue;
         subscribedTokens.delete(token);
         socket.leave(`tick:${token}`);
-        const count = (subscriberCounts.get(token) ?? 1) - 1;
-        if (count <= 0) {
+        const currentCount = subscriberCounts.get(token) ?? 1;
+        const newCount = Math.max(0, currentCount - 1);
+        if (newCount === 0) {
           subscriberCounts.delete(token);
-          tokenMetadata.delete(token);
           await broker.unsubscribeTicks([token]).catch(() => { });
         } else {
-          subscriberCounts.set(token, count);
+          subscriberCounts.set(token, newCount);
         }
       }
     });
@@ -173,13 +176,13 @@ export function initPriceFeedGateway(httpServer: HttpServer) {
     socket.on("disconnect", async () => {
       const broker = getBrokerAdapter();
       for (const token of subscribedTokens) {
-        const count = (subscriberCounts.get(token) ?? 1) - 1;
-        if (count <= 0) {
+        const currentCount = subscriberCounts.get(token) ?? 1;
+        const newCount = Math.max(0, currentCount - 1);
+        if (newCount === 0) {
           subscriberCounts.delete(token);
-          tokenMetadata.delete(token);
           await broker.unsubscribeTicks([token]).catch(() => { });
         } else {
-          subscriberCounts.set(token, count);
+          subscriberCounts.set(token, newCount);
         }
       }
       subscribedTokens.clear();

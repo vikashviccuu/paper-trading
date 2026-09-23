@@ -4,6 +4,7 @@ import { getBrokerAdapter } from "../brokers/BrokerFactory";
 import { calculateRequiredMargin } from "./MarginCalculator";
 import { portfolioService } from "./PortfolioService";
 import { contestPortfolioService } from "./ContestPortfolioService";
+import { leaderboardService } from "./LeaderboardService";
 import { env } from "../config/env";
 import { isMarketOpen } from "../utils/marketHours";
 
@@ -237,6 +238,27 @@ export class OrderEngine {
           });
           if (realizedPnL !== 0) {
             await contestPortfolioService.applyRealizedPnL(order.contestParticipantId, realizedPnL);
+          }
+
+          // Capture new NAV snapshot and immediately refresh contest scores in background
+          try {
+            const nav = await contestPortfolioService.computeNav(order.contestParticipantId);
+            if (nav > 0) {
+              await prisma.contestPortfolioSnapshot.create({
+                data: { contestParticipantId: order.contestParticipantId, nav },
+              });
+            }
+            const participant = await prisma.contestParticipant.findUnique({
+              where: { id: order.contestParticipantId },
+              select: { contestId: true },
+            });
+            if (participant?.contestId) {
+              leaderboardService.computeLeaderboard(participant.contestId).catch((err) => {
+                console.error("Leaderboard recomputation failed on trade fill:", err);
+              });
+            }
+          } catch (err) {
+            console.error("Contest trade snapshot failed:", err);
           }
         } else {
           const { realizedPnL } = await portfolioService.applyFill({

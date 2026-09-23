@@ -1,5 +1,6 @@
 import { prisma } from "../utils/prisma";
 import { Prisma } from "@prisma/client";
+import { getBrokerAdapter } from "../brokers/BrokerFactory";
 
 /**
  * Mirrors PortfolioService.ts exactly, but against the contest-scoped
@@ -219,17 +220,46 @@ export class ContestPortfolioService {
     const { participant, positions, holdings } = await this.getPortfolioSnapshot(contestParticipantId);
     if (!participant) return 0;
 
+    // Collect all instrument tokens needed for live quotes
+    const tokens: string[] = [];
+    for (const p of positions) {
+      if (p.quantity !== 0 && !p.isClosed && p.instrument?.instrumentToken) {
+        tokens.push(p.instrument.instrumentToken);
+      }
+    }
+    for (const h of holdings) {
+      if (h.quantity > 0 && !h.isDeleted && h.instrument?.instrumentToken) {
+        tokens.push(h.instrument.instrumentToken);
+      }
+    }
+
+    const ltpMap = new Map<string, number>();
+    if (tokens.length > 0) {
+      try {
+        const quotes = await getBrokerAdapter().getQuote(tokens);
+        for (const q of quotes) {
+          if (q && q.lastPrice > 0) {
+            ltpMap.set(q.instrumentToken, q.lastPrice);
+          }
+        }
+      } catch {
+        // Fall back to database lastPrice or average price
+      }
+    }
+
     let totalUnrealisedPnL = 0;
     for (const p of positions) {
       if (p.quantity === 0 || p.isClosed) continue;
       const avg = Number(p.avgPrice);
-      const ltp = Number(p.instrument?.lastPrice ?? avg);
+      const token = p.instrument?.instrumentToken;
+      const ltp = ltpMap.get(token ?? "") ?? Number(p.instrument?.lastPrice ?? avg);
       totalUnrealisedPnL += p.quantity * (ltp - avg);
     }
     for (const h of holdings) {
       if (h.quantity === 0 || h.isDeleted) continue;
       const avg = Number(h.avgPrice);
-      const ltp = Number(h.instrument?.lastPrice ?? avg);
+      const token = h.instrument?.instrumentToken;
+      const ltp = ltpMap.get(token ?? "") ?? Number(h.instrument?.lastPrice ?? avg);
       totalUnrealisedPnL += h.quantity * (ltp - avg);
     }
     return Number(participant.cashBalance) + Number(participant.marginUsed) + totalUnrealisedPnL;

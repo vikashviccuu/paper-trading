@@ -91,6 +91,30 @@ adminContestsRouter.get("/:id", async (req, res) => {
     },
   });
   if (!contest) return res.status(404).json({ error: "Contest not found" });
+
+  const shouldRecompute =
+    contest.status === "ACTIVE" ||
+    contest.participants.some((p) => p.rank == null || p.compositeScore == null || p.lastScoredAt == null);
+
+  if (shouldRecompute && contest.participants.length > 0) {
+    try {
+      await leaderboardService.computeLeaderboard(contest.id);
+      const updated = await prisma.contest.findUnique({
+        where: { id: req.params.id },
+        include: {
+          createdByAdmin: { select: { id: true, name: true, email: true } },
+          participants: {
+            include: { user: { select: { id: true, name: true, email: true } } },
+            orderBy: [{ rank: "asc" }, { joinedAt: "asc" }],
+          },
+        },
+      });
+      if (updated) return res.json(updated);
+    } catch (err) {
+      console.error("Admin contest leaderboard computation error:", err);
+    }
+  }
+
   res.json(contest);
 });
 
