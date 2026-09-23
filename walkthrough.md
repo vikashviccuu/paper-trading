@@ -96,3 +96,103 @@ In response to the requirement to implement a button in the Admin Dashboard (`ht
 - **`GET /api/market/quote?i=MCX:GOLD,MCX:CRUDEOIL`**:
   - `MCX:GOLD`: **₹74,500.00**
   - `MCX:CRUDEOIL`: **₹6,150.00**
+
+---
+
+# Contest & Ranking System: Comprehensive Test & Manual Verification Guide
+
+## Contest Overview
+- **Contest ID**: `df294030-62c6-480e-b8b4-002fdf09191c`
+- **Contest Name**: `test contest`
+- **Contest URL**: [https://187-127-178-25.sslip.io/contests/df294030-62c6-480e-b8b4-002fdf09191c](https://187-127-178-25.sslip.io/contests/df294030-62c6-480e-b8b4-002fdf09191c)
+- **Admin Management URL**: [https://187-127-178-25.sslip.io/admin/contests/df294030-62c6-480e-b8b4-002fdf09191c](https://187-127-178-25.sslip.io/admin/contests/df294030-62c6-480e-b8b4-002fdf09191c)
+- **Starting Virtual Cash**: ₹100,000.00
+- **Scoring Weights**: **60% Return Weight** (`0.60`), **40% Risk Weight** (`0.40`)
+- **Total Prize Pool**: ₹10,000.00
+  - **Rank 1**: 90% Slab = **₹9,000.00**
+  - **Rank 2**: 10% Slab = **₹1,000.00**
+
+---
+
+## Dummy Test User Profiles & Expected Ranks
+
+All 5 dummy test accounts have been initialized with **verified email and phone**, pre-populated trades, open positions, cash balances, and equity snapshots.
+
+| Rank | Trader Name | Email | Password | Operations Performed | Final NAV | Return % | Risk % | Max Drawdown % | Composite Score | Prize Won |
+| :---: | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **#1** | **Aarav Sharma (Alpha Trader)** | `aarav.alpha@contesttest.com` | `Password@123` | • RELIANCE Intraday: +₹5,400 realized profit<br>• SBIN Intraday: Open Long 15 qty @ ₹750 (+₹525 unrealized) | **₹105,925** | **+5.93%** | 1.42% | 0.00% | **+2.989** | **₹9,000** (90%) |
+| **#2** | **Pooja Patel (Quant Scalper)** | `pooja.scalper@contesttest.com` | `Password@123` | • INFY Intraday: Bought 20 @ 1750, Sold @ 1900 (+₹3,000 profit)<br>• No open overnight risk | **₹103,000** | **+3.00%** | 0.86% | 0.00% | **+1.456** | **₹1,000** (10%) |
+| **#3** | **Rohan Gupta (Moderate Trader)** | `rohan.neutral@contesttest.com` | `Password@123` | • TCS Intraday: Bought 5 @ 3150, Sold @ 3310 (+₹800 profit)<br>• Conservative execution | **₹100,800** | **+0.80%** | 0.23% | 0.00% | **+0.388** | ₹0 |
+| **#7** | **Kavita Verma (Passive Trader)** | `kavita.passive@contesttest.com` | `Password@123` | • Flat 100% Cash (0 trades)<br>• Zero risk, Zero return | **₹100,000** | **0.00%** | 0.00% | 0.00% | **0.000** | ₹0 |
+| **#8** | **Dev Malhotra (YOLO Trader)** | `dev.yolo@contesttest.com` | `Password@123` | • HDFCBANK: High loss -₹5,000<br>• SBIN: Bought 10 @ 820 (loss -₹350) | **₹94,650** | **-5.35%** | 0.95% | **5.35%** | **-3.591** | ₹0 |
+
+*(Note: Ranks 4, 5, 6 are held by baseline registrations with flat ₹100k balances).*
+
+---
+
+## Mathematical Scoring & Ranking Engine Breakdown
+
+1. **Net Asset Value (NAV)**:
+   $$\text{NAV} = \text{Cash Balance} + \text{Margin Used} + \sum (\text{Unrealised PnL})$$
+2. **Total Percentage Return (Return %)**:
+   $$\text{Return \%} = \left( \frac{\text{Current NAV} - \text{Starting Cash}}{\text{Starting Cash}} \right) \times 100$$
+3. **Risk (NAV Volatility %)**:
+   $$\text{Risk Score} = \text{Sample StdDev of period-over-period percentage returns across the equity curve}$$
+4. **Maximum Drawdown (MDD %)**:
+   $$\text{MDD \%} = \max_{t} \left( \frac{\text{Peak NAV}_{t} - \text{NAV}_{t}}{\text{Peak NAV}_{t}} \right) \times 100$$
+5. **Composite Score (Risk-Adjusted Performance)**:
+   $$\text{Composite Score} = (0.60 \times \text{Return \%}) - (0.40 \times \text{Risk Score})$$
+   - Higher return increases the score.
+   - Higher volatility or drawdowns penalize the score, preventing reckless gambling.
+
+---
+
+## Step-by-Step Manual Verification Instructions
+
+### Step 1: Verify the Public Contest & Leaderboard Page
+1. Open the contest page: [https://187-127-178-25.sslip.io/contests/df294030-62c6-480e-b8b4-002fdf09191c](https://187-127-178-25.sslip.io/contests/df294030-62c6-480e-b8b4-002fdf09191c)
+2. Scroll to the **Leaderboard** tab:
+   - Verify **Rank 1**: Aarav Sharma (NAV: ₹105,925 | Return: +5.93% | Score: +2.989)
+   - Verify **Rank 2**: Pooja Patel (NAV: ₹103,000 | Return: +3.00% | Score: +1.456)
+   - Verify **Rank 3**: Rohan Gupta (NAV: ₹100,800 | Return: +0.80% | Score: +0.388)
+   - Verify **Rank 8**: Dev Malhotra (NAV: ₹94,650 | Return: -5.35% | MDD: 5.35% | Score: -3.591)
+
+---
+
+### Step 2: Login as Dummy User (e.g. Rank 1: Aarav Sharma)
+1. Go to [https://187-127-178-25.sslip.io/login](https://187-127-178-25.sslip.io/login)
+2. Enter Credentials:
+   - **Email**: `aarav.alpha@contesttest.com`
+   - **Password**: `Password@123`
+3. If 2FA OTP prompt appears, enter the demo OTP displayed on the screen modal.
+4. Navigate to Contest: [https://187-127-178-25.sslip.io/contests/df294030-62c6-480e-b8b4-002fdf09191c](https://187-127-178-25.sslip.io/contests/df294030-62c6-480e-b8b4-002fdf09191c)
+5. Click on **Portfolio / My Contest Trades**:
+   - Check **Cash Balance**: ₹103,150.00
+   - Check **Margin Used**: ₹2,250.00
+   - Check **Realized PnL**: +₹5,400.00
+   - Check **Open Positions**: SBIN (15 Qty, Buy Avg ₹750)
+   - Check **Order History**: 3 completed orders (RELIANCE Buy/Sell, SBIN Buy)
+
+---
+
+### Step 3: Test Placing a Live Contest Trade
+1. While logged in as `aarav.alpha@contesttest.com`, go to the Contest Trading terminal or click **Trade in Contest**.
+2. Search for any stock (e.g., `TCS` or `INFY`).
+3. Place a Market Buy order for 5 shares.
+4. Observe:
+   - Margin is deducted from Virtual Cash balance.
+   - Position is created in Contest Positions.
+   - Leaderboard re-computes dynamically upon order execution.
+
+---
+
+### Step 4: Verify Admin Leaderboard & Prize Distribution Controls
+1. Log in to the Admin Dashboard: [https://187-127-178-25.sslip.io/admin/contests/df294030-62c6-480e-b8b4-002fdf09191c](https://187-127-178-25.sslip.io/admin/contests/df294030-62c6-480e-b8b4-002fdf09191c)
+2. View **Contest Leaderboard & Scoring**:
+   - Verify that all participants and composite scores match the mathematical model.
+   - Use the **Force Recompute Leaderboard** button to test on-demand scoring.
+3. View **Prize Pool & Slabs**:
+   - Slabs configured:
+     - Rank 1-1: 90% (₹9,000)
+     - Rank 2-2: 10% (₹1,000)
+   - When contest completes, verify that Prize Awards match Aarav (₹9,000) and Pooja (₹1,000).

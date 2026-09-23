@@ -860,16 +860,37 @@ function Terminal() {
       .finally(() => setHistoryLoading(false));
   }, [historyItem?.instrumentToken, historyTf]);
 
-  // Portfolio refresh
+  // Portfolio and Contest refresh
   useEffect(() => {
-    PortfolioAPI.get().then((r) => {
-      setWallet(Number(r.data.wallet?.cashBalance ?? r.data.wallet?.balance ?? 0));
-      setWalletRealizedPnL(Number(r.data.wallet?.realizedPnL ?? 0));
-      setPositions(r.data.positions ?? []);
-      setHoldings(r.data.holdings ?? []);
-    }).catch(() => {});
-    OrdersAPI.list().then((r) => setOrders(r.data ?? [])).catch(() => {});
-  }, [msg]);
+    if (contestId) {
+      api.get(`/contests/${contestId}/me`)
+        .then((r) => {
+          const part = r.data?.participant;
+          setWallet(Number(part?.cashBalance ?? 0));
+          setWalletRealizedPnL(Number(part?.realizedPnL ?? 0));
+          setPositions(Array.isArray(r.data?.positions) ? r.data.positions : []);
+          setHoldings(Array.isArray(r.data?.holdings) ? r.data.holdings : []);
+        })
+        .catch(() => {});
+
+      api.get("/orders", { params: { contestId } })
+        .then((r) => setOrders(Array.isArray(r.data) ? r.data : []))
+        .catch(() => {});
+    } else {
+      PortfolioAPI.get()
+        .then((r) => {
+          setWallet(Number(r.data?.wallet?.cashBalance ?? r.data?.wallet?.balance ?? 0));
+          setWalletRealizedPnL(Number(r.data?.wallet?.realizedPnL ?? 0));
+          setPositions(Array.isArray(r.data?.positions) ? r.data.positions : []);
+          setHoldings(Array.isArray(r.data?.holdings) ? r.data.holdings : []);
+        })
+        .catch(() => {});
+
+      OrdersAPI.list()
+        .then((r) => setOrders(Array.isArray(r.data) ? r.data : []))
+        .catch(() => {});
+    }
+  }, [msg, contestId]);
 
   // REST quote for OHLC chip and Market Depth with race-condition prevention
   useEffect(() => {
@@ -1883,7 +1904,7 @@ function Terminal() {
                   )}
                   {quote && (
                     <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6, fontFamily: "var(--font-mono)" }}>
-                      O:{quote.open?.toFixed(2)} H:{quote.high?.toFixed(2)} L:{quote.low?.toFixed(2)}
+                      O:{Number(quote.open ?? (quote as any).ohlc?.open ?? 0).toFixed(2)} H:{Number(quote.high ?? (quote as any).ohlc?.high ?? 0).toFixed(2)} L:{Number(quote.low ?? (quote as any).ohlc?.low ?? 0).toFixed(2)}
                     </span>
                   )}
                 </>
