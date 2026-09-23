@@ -1083,6 +1083,113 @@ function Terminal() {
     }
   }
 
+  async function squareOffPosition(p: any) {
+    const instId = p.instrumentId || p.instrument?.id;
+    if (!instId) {
+      setMsg({ text: "Cannot square off: Instrument ID not found", ok: false });
+      return;
+    }
+    const sym = p.instrument?.tradingSymbol || "position";
+    const oppSide = p.quantity > 0 ? "SELL" : "BUY";
+    const qtyToClose = Math.abs(p.quantity);
+
+    if (marketStatus && !marketStatus.isOpen) {
+      setMsg({
+        text: `⛔ Market is Closed. Orders can only be placed Monday to Friday between 09:15 AM and 03:30 PM IST. (Current IST: ${marketStatus.currentIstTime || "Closed"})`,
+        ok: false,
+      });
+      return;
+    }
+
+    setMsg({ text: `⏳ Squaring off ${sym}...`, ok: true });
+    try {
+      await OrdersAPI.place({
+        instrumentId: instId,
+        transactionType: oppSide,
+        orderType: "MARKET",
+        productType: p.productType || "INTRADAY",
+        quantity: qtyToClose,
+        contestId,
+      });
+      setMsg({ text: `✓ Squared off ${sym} (${oppSide} ${qtyToClose} Qty)`, ok: true });
+
+      // Immediate refresh of portfolio & orders
+      if (contestId) {
+        api.get(`/contests/${contestId}/me`).then((r) => {
+          const part = r.data?.participant;
+          setWallet(Number(part?.cashBalance ?? 0));
+          setWalletRealizedPnL(Number(part?.realizedPnL ?? 0));
+          setPositions(Array.isArray(r.data?.positions) ? r.data.positions : []);
+          setHoldings(Array.isArray(r.data?.holdings) ? r.data.holdings : []);
+        }).catch(() => {});
+        api.get("/orders", { params: { contestId } }).then((r) => setOrders(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+      } else {
+        PortfolioAPI.get().then((r) => {
+          setWallet(Number(r.data?.wallet?.cashBalance ?? r.data?.wallet?.balance ?? 0));
+          setWalletRealizedPnL(Number(r.data?.wallet?.realizedPnL ?? 0));
+          setPositions(Array.isArray(r.data?.positions) ? r.data.positions : []);
+          setHoldings(Array.isArray(r.data?.holdings) ? r.data.holdings : []);
+        }).catch(() => {});
+        OrdersAPI.list().then((r) => setOrders(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+      }
+    } catch (err: any) {
+      setMsg({ text: err.response?.data?.error ?? "Square off failed", ok: false });
+    }
+  }
+
+  async function exitHolding(h: any) {
+    const instId = h.instrumentId || h.instrument?.id;
+    if (!instId) {
+      setMsg({ text: "Cannot exit holding: Instrument ID not found", ok: false });
+      return;
+    }
+    const sym = h.instrument?.tradingSymbol || "holding";
+    const qtyToSell = Math.abs(h.quantity);
+
+    if (marketStatus && !marketStatus.isOpen) {
+      setMsg({
+        text: `⛔ Market is Closed. Orders can only be placed Monday to Friday between 09:15 AM and 03:30 PM IST. (Current IST: ${marketStatus.currentIstTime || "Closed"})`,
+        ok: false,
+      });
+      return;
+    }
+
+    setMsg({ text: `⏳ Exiting holding ${sym}...`, ok: true });
+    try {
+      await OrdersAPI.place({
+        instrumentId: instId,
+        transactionType: "SELL",
+        orderType: "MARKET",
+        productType: "DELIVERY",
+        quantity: qtyToSell,
+        contestId,
+      });
+      setMsg({ text: `✓ Sold holding ${sym} (SELL ${qtyToSell} Qty CNC)`, ok: true });
+
+      // Immediate refresh of portfolio & orders
+      if (contestId) {
+        api.get(`/contests/${contestId}/me`).then((r) => {
+          const part = r.data?.participant;
+          setWallet(Number(part?.cashBalance ?? 0));
+          setWalletRealizedPnL(Number(part?.realizedPnL ?? 0));
+          setPositions(Array.isArray(r.data?.positions) ? r.data.positions : []);
+          setHoldings(Array.isArray(r.data?.holdings) ? r.data.holdings : []);
+        }).catch(() => {});
+        api.get("/orders", { params: { contestId } }).then((r) => setOrders(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+      } else {
+        PortfolioAPI.get().then((r) => {
+          setWallet(Number(r.data?.wallet?.cashBalance ?? r.data?.wallet?.balance ?? 0));
+          setWalletRealizedPnL(Number(r.data?.wallet?.realizedPnL ?? 0));
+          setPositions(Array.isArray(r.data?.positions) ? r.data.positions : []);
+          setHoldings(Array.isArray(r.data?.holdings) ? r.data.holdings : []);
+        }).catch(() => {});
+        OrdersAPI.list().then((r) => setOrders(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+      }
+    } catch (err: any) {
+      setMsg({ text: err.response?.data?.error ?? "Exit holding failed", ok: false });
+    }
+  }
+
   // Memoized search results and pagination for 0% render lag
   const filteredResults = useMemo(() => {
     return results.filter((r) => {
@@ -1685,13 +1792,10 @@ function Terminal() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (p.instrument) selectInstrument(p.instrument);
-                                setSide(p.quantity > 0 ? "SELL" : "BUY");
-                                setPtype(p.productType || "INTRADAY");
-                                setOtype("MARKET");
-                                setQty(Math.abs(p.quantity));
+                                squareOffPosition(p);
                               }}
                               className="t-pos-sq-btn"
+                              title={`Square off ${p.instrument?.tradingSymbol || "position"}`}
                             >
                               Square Off
                             </button>
@@ -1813,13 +1917,10 @@ function Terminal() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (h.instrument) selectInstrument(h.instrument);
-                                setSide("SELL");
-                                setPtype("DELIVERY");
-                                setOtype("MARKET");
-                                setQty(h.quantity);
+                                exitHolding(h);
                               }}
                               className="t-holding-exit-btn"
+                              title={`Sell/Exit holding ${h.instrument?.tradingSymbol || "holding"}`}
                             >
                               Exit / Sell
                             </button>
